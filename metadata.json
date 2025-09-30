@@ -1,0 +1,5 @@
+{
+  "name": "CAD PRO",
+  "description": "An advanced web-based CAD application inspired by AutoCAD. Features include drawing basic shapes, polylines, a ribbon toolbar, layer management, a command line, a status bar, and tools to move, rotate, and scale objects.",
+  "requestFramePermissions": []
+}
