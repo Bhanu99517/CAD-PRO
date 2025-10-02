@@ -129,7 +129,7 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                     <div className="flex flex-col space-y-1 ml-1">
                         <SmallToolButton Icon={PolylineIcon} label="Polyline" isActive={activeTool === Tool.POLYLINE} onClick={() => setActiveTool(Tool.POLYLINE)} />
                         <SmallToolButton Icon={CircleIcon} label="Circle" isActive={activeTool === Tool.CIRCLE} onClick={() => setActiveTool(Tool.CIRCLE)} />
-                        <SmallToolButton Icon={ArcIcon} label="Arc" isActive={activeTool === Tool.ARC} onClick={() => alert('Use the command line to draw an Arc. E.g. "draw an arc with radius 50 from 0 to 180 degrees"')} />
+                        <SmallToolButton Icon={ArcIcon} label="Arc" isActive={activeTool === Tool.ARC} onClick={() => setActiveTool(Tool.ARC)} />
                     </div>
                 </div>
             </ToolGroup>

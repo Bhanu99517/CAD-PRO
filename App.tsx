@@ -1,12 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
-import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape } from './types';
+import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape } from './types';
 import Header from './components/Header';
 import Canvas from './components/Canvas';
 import PropertiesPanel from './components/PropertiesPanel';
 import LayersPanel from './components/LayersPanel';
 import CommandLine from './components/CommandLine';
 import StatusBar from './components/StatusBar';
+import { getShapeCenter } from './utils';
 
 const shapeCreationSchema = {
     type: Type.OBJECT,
@@ -33,6 +34,27 @@ const shapeCreationSchema = {
     required: ['shapeType']
 };
 
+const shapeModificationSchema = {
+    type: Type.OBJECT,
+    properties: {
+        action: {
+            type: Type.STRING,
+            description: 'The modification to perform. Must be one of: "move", "rotate", "scale", "delete".',
+            enum: ['move', 'rotate', 'scale', 'delete']
+        },
+        target: {
+            type: Type.STRING,
+            description: "The target of the action. Always use 'selected' as the user will be referring to the currently selected object.",
+            enum: ['selected']
+        },
+        dx: { type: Type.NUMBER, description: "The distance to move along the x-axis. Positive is right, negative is left." },
+        dy: { type: Type.NUMBER, description: "The distance to move along the y-axis. Positive is down, negative is up." },
+        angle: { type: Type.NUMBER, description: "The angle to rotate by, in degrees. Positive is clockwise." },
+        scaleFactor: { type: Type.NUMBER, description: "The factor to scale by. E.g., 2 for double size, 0.5 for half size." },
+    },
+    required: ['action', 'target']
+};
+
 const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState<Tool>(Tool.SELECT);
 
@@ -47,6 +69,8 @@ const App: React.FC = () => {
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [coords, setCoords] = useState<Point>({ x: 0, y: 0 });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState<boolean>(true);
+  const [orthoEnabled, setOrthoEnabled] = useState<boolean>(false);
 
   const setShapesAndHistory = (newShapes: Shape[]) => {
     const currentShapes = history[historyIndex];
@@ -126,7 +150,9 @@ const App: React.FC = () => {
     
     const commandLower = command.toLowerCase();
     const drawKeywords = ['draw', 'make', 'create', 'add'];
+    const modifyKeywords = ['move', 'rotate', 'scale', 'delete', 'remove', 'change', 'modify', 'resize', 'spin'];
     const isDrawCommand = drawKeywords.some(kw => commandLower.startsWith(kw));
+    const isModifyCommand = modifyKeywords.some(kw => commandLower.includes(kw));
 
     setIsGenerating(true);
     try {
@@ -157,48 +183,22 @@ const App: React.FC = () => {
         switch (shapeData.shapeType) {
             case 'circle':
                 if (shapeData.radius > 0) {
-                    newShape = {
-                        ...commonProps,
-                        type: Tool.CIRCLE,
-                        cx: shapeData.cx ?? 100,
-                        cy: shapeData.cy ?? 100,
-                        r: shapeData.radius,
-                    } as CircleShape;
+                    newShape = { ...commonProps, type: Tool.CIRCLE, cx: shapeData.cx ?? 100, cy: shapeData.cy ?? 100, r: shapeData.radius } as CircleShape;
                 }
                 break;
             case 'rectangle':
                 if (shapeData.width > 0 && shapeData.height > 0) {
-                    newShape = {
-                        ...commonProps,
-                        type: Tool.RECTANGLE,
-                        x: shapeData.x ?? 100,
-                        y: shapeData.y ?? 100,
-                        width: shapeData.width,
-                        height: shapeData.height,
-                    } as RectangleShape;
+                    newShape = { ...commonProps, type: Tool.RECTANGLE, x: shapeData.x ?? 100, y: shapeData.y ?? 100, width: shapeData.width, height: shapeData.height } as RectangleShape;
                 }
                 break;
             case 'line':
                 if (shapeData.x1 != null && shapeData.y1 != null && shapeData.x2 != null && shapeData.y2 != null) {
-                    newShape = {
-                        ...commonProps,
-                        type: Tool.LINE,
-                        p1: { x: shapeData.x1, y: shapeData.y1 },
-                        p2: { x: shapeData.x2, y: shapeData.y2 },
-                    } as LineShape;
+                    newShape = { ...commonProps, type: Tool.LINE, p1: { x: shapeData.x1, y: shapeData.y1 }, p2: { x: shapeData.x2, y: shapeData.y2 } } as LineShape;
                 }
                 break;
             case 'arc':
                 if (shapeData.radius > 0 && shapeData.startAngle != null && shapeData.endAngle != null) {
-                    newShape = {
-                        ...commonProps,
-                        type: Tool.ARC,
-                        cx: shapeData.cx ?? 100,
-                        cy: shapeData.cy ?? 100,
-                        r: shapeData.radius,
-                        startAngle: shapeData.startAngle,
-                        endAngle: shapeData.endAngle,
-                    } as ArcShape;
+                    newShape = { ...commonProps, type: Tool.ARC, cx: shapeData.cx ?? 100, cy: shapeData.cy ?? 100, r: shapeData.radius, startAngle: shapeData.startAngle, endAngle: shapeData.endAngle } as ArcShape;
                 }
                 break;
         }
@@ -208,44 +208,81 @@ const App: React.FC = () => {
         } else {
             console.warn("Could not create a valid shape from the command.", shapeData);
         }
+      } else if (isModifyCommand) {
+        const selectedShape = shapes.find(s => s.id === selectedShapeId);
+        if (!selectedShape) {
+          console.warn("Please select a shape before using a modification command.");
+          // TODO: Provide user feedback in the UI
+          setIsGenerating(false);
+          return;
+        }
 
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `Parse the following command to extract information for modifying a shape. Respond in JSON format according to the schema. The user wants to modify the currently selected shape. Command: '${command}'`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: shapeModificationSchema,
+          }
+        });
+        
+        const jsonStr = response.text.trim();
+        const modData = JSON.parse(jsonStr);
+        let updatedShape = JSON.parse(JSON.stringify(selectedShape)) as Shape;
+
+        switch (modData.action) {
+            case 'delete':
+                deleteShape(selectedShape.id);
+                setIsGenerating(false);
+                return;
+            case 'move':
+                const { dx = 0, dy = 0 } = modData;
+                switch (updatedShape.type) {
+                    case Tool.LINE: (updatedShape as LineShape).p1 = { x: (updatedShape as LineShape).p1.x + dx, y: (updatedShape as LineShape).p1.y + dy }; (updatedShape as LineShape).p2 = { x: (updatedShape as LineShape).p2.x + dx, y: (updatedShape as LineShape).p2.y + dy }; break;
+                    case Tool.RECTANGLE: case Tool.IMAGE: (updatedShape as RectangleShape | ImageShape).x += dx; (updatedShape as RectangleShape | ImageShape).y += dy; break;
+                    case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).cx += dx; (updatedShape as CircleShape | ArcShape).cy += dy; break;
+                    case Tool.POLYLINE: (updatedShape as PolylineShape).points = (updatedShape as PolylineShape).points.map((p: Point) => ({ x: p.x + dx, y: p.y + dy })); break;
+                }
+                break;
+            case 'rotate':
+                const { angle = 0 } = modData;
+                updatedShape.rotation = (updatedShape.rotation || 0) + angle;
+                break;
+            case 'scale':
+                const { scaleFactor = 1 } = modData;
+                if (scaleFactor === 1 || scaleFactor <= 0) break;
+                const center = getShapeCenter(updatedShape);
+                switch (updatedShape.type) {
+                    case Tool.RECTANGLE: case Tool.IMAGE: const rect = updatedShape as RectangleShape | ImageShape; rect.width *= scaleFactor; rect.height *= scaleFactor; rect.x = center.x - rect.width / 2; rect.y = center.y - rect.height / 2; break;
+                    case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).r *= scaleFactor; break;
+                    case Tool.LINE: const line = updatedShape as LineShape; const p1Vec = { x: line.p1.x - center.x, y: line.p1.y - center.y }; const p2Vec = { x: line.p2.x - center.x, y: line.p2.y - center.y }; line.p1 = { x: center.x + p1Vec.x * scaleFactor, y: center.y + p1Vec.y * scaleFactor }; line.p2 = { x: center.x + p2Vec.x * scaleFactor, y: center.y + p2Vec.y * scaleFactor }; break;
+                    case Tool.POLYLINE: const poly = updatedShape as PolylineShape; poly.points = poly.points.map((p: Point) => { const vec = { x: p.x - center.x, y: p.y - center.y }; return { x: center.x + vec.x * scaleFactor, y: center.y + vec.y * scaleFactor }; }); break;
+                }
+                break;
+        }
+        updateShape(updatedShape);
       } else {
         const response = await ai.models.generateImages({
           model: 'imagen-4.0-generate-001',
           prompt: command,
-          config: {
-            numberOfImages: 1,
-            outputMimeType: 'image/jpeg',
-            aspectRatio: '1:1',
-          },
+          config: { numberOfImages: 1, outputMimeType: 'image/jpeg', aspectRatio: '1:1' },
         });
 
         const base64ImageBytes = response.generatedImages[0].image.imageBytes;
         const imageUrl = `data:image/jpeg;base64,${base64ImageBytes}`;
         
         const newImageShape: ImageShape = {
-          id: `shape_${Date.now()}`,
-          type: Tool.IMAGE,
-          layerId: activeLayerId,
-          color: '#FFFFFF',
-          strokeWidth: 0,
-          rotation: 0,
-          x: 100,
-          y: 100,
-          width: 512,
-          height: 512,
-          href: imageUrl,
+          id: `shape_${Date.now()}`, type: Tool.IMAGE, layerId: activeLayerId, color: '#FFFFFF',
+          strokeWidth: 0, rotation: 0, x: 100, y: 100, width: 512, height: 512, href: imageUrl,
         };
-
         addShape(newImageShape);
       }
-
     } catch (error) {
       console.error('Error processing command with Gemini:', error);
     } finally {
       setIsGenerating(false);
     }
-  }, [addShape, activeLayerId]);
+  }, [addShape, activeLayerId, shapes, selectedShapeId, deleteShape, updateShape]);
   
   const selectedShape = shapes.find(shape => shape.id === selectedShapeId) || null;
   const activeLayer = layers.find(l => l.id === activeLayerId) || defaultLayer;
@@ -273,6 +310,8 @@ const App: React.FC = () => {
             activeLayer={activeLayer}
             layers={layers}
             setCoords={setCoords}
+            snapEnabled={snapEnabled}
+            orthoEnabled={orthoEnabled}
           />
         </main>
         <aside className="w-64 flex flex-col bg-gray-800 border-l border-gray-700">
@@ -292,7 +331,13 @@ const App: React.FC = () => {
         </aside>
       </div>
       <CommandLine handleCommand={handleCommand} isGenerating={isGenerating} />
-      <StatusBar coords={coords} />
+      <StatusBar 
+        coords={coords} 
+        snapEnabled={snapEnabled} 
+        setSnapEnabled={setSnapEnabled}
+        orthoEnabled={orthoEnabled}
+        setOrthoEnabled={setOrthoEnabled}
+      />
     </div>
   );
 };

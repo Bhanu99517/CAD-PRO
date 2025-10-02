@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Layer } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
+import { EyeIcon } from './icons/EyeIcon';
+import { EyeOffIcon } from './icons/EyeOffIcon';
 
 interface LayersPanelProps {
   layers: Layer[];
@@ -25,6 +27,14 @@ const LayersPanel: React.FC<LayersPanelProps> = ({ layers, activeLayerId, setAct
             updateLayer({ ...layer, color: newColor });
         }
     }
+    
+    const handleVisibilityToggle = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        const layer = layers.find(l => l.id === id);
+        if (layer) {
+            updateLayer({ ...layer, visible: !layer.visible });
+        }
+    };
 
     return (
     <div className="p-4 flex flex-col space-y-4 border-t border-gray-700 flex-1 overflow-y-auto">
@@ -41,6 +51,13 @@ const LayersPanel: React.FC<LayersPanelProps> = ({ layers, activeLayerId, setAct
                 onClick={() => setActiveLayerId(layer.id)}
                 className={`flex items-center space-x-2 p-2 rounded-md cursor-pointer ${activeLayerId === layer.id ? 'bg-blue-600/30' : 'hover:bg-gray-700'}`}
             >
+                <button 
+                    onClick={(e) => handleVisibilityToggle(e, layer.id)}
+                    className="p-1 rounded-md hover:bg-gray-600 focus:outline-none"
+                    title={layer.visible ? 'Hide Layer' : 'Show Layer'}
+                >
+                    {layer.visible ? <EyeIcon className="w-4 h-4 text-gray-300" /> : <EyeOffIcon className="w-4 h-4 text-gray-500" />}
+                </button>
                 <input 
                     type="color" 
                     value={layer.color}
@@ -52,7 +69,7 @@ const LayersPanel: React.FC<LayersPanelProps> = ({ layers, activeLayerId, setAct
                     type="text"
                     value={layer.name}
                     onChange={(e) => handleNameChange(layer.id, e.target.value)}
-                    className="bg-transparent text-sm w-full focus:outline-none focus:bg-gray-600 rounded px-1"
+                    className={`bg-transparent text-sm w-full focus:outline-none focus:bg-gray-600 rounded px-1 ${!layer.visible ? 'text-gray-500 italic' : 'text-white'}`}
                     onClick={(e) => e.stopPropagation()}
                 />
             </div>

@@ -1,5 +1,6 @@
 import React, { useState, useRef, MouseEvent, useEffect } from 'react';
 import { Tool, Shape, Point, LineShape, RectangleShape, CircleShape, PolylineShape, Layer, ImageShape, ArcShape } from '../types';
+import { getShapeCenter } from '../utils';
 
 interface CanvasProps {
   activeTool: Tool;
@@ -12,6 +13,8 @@ interface CanvasProps {
   activeLayer: Layer;
   layers: Layer[];
   setCoords: (point: Point) => void;
+  snapEnabled: boolean;
+  orthoEnabled: boolean;
 }
 
 const getMousePos = (svg: SVGSVGElement, e: MouseEvent): Point => {
@@ -24,29 +27,6 @@ const getMousePos = (svg: SVGSVGElement, e: MouseEvent): Point => {
   }
   return { x: 0, y: 0 };
 };
-
-const getShapeCenter = (shape: Shape): Point => {
-    switch (shape.type) {
-        case Tool.RECTANGLE:
-        case Tool.IMAGE:
-            return { x: (shape as RectangleShape | ImageShape).x + (shape as RectangleShape | ImageShape).width / 2, y: (shape as RectangleShape | ImageShape).y + (shape as RectangleShape | ImageShape).height / 2 };
-        case Tool.CIRCLE:
-        case Tool.ARC:
-            return { x: (shape as CircleShape | ArcShape).cx, y: (shape as CircleShape | ArcShape).cy };
-        case Tool.LINE:
-            return { x: (shape.p1.x + shape.p2.x) / 2, y: (shape.p1.y + shape.p2.y) / 2 };
-        case Tool.POLYLINE:
-            const xs = shape.points.map(p => p.x);
-            const ys = shape.points.map(p => p.y);
-            const minX = Math.min(...xs);
-            const maxX = Math.max(...xs);
-            const minY = Math.min(...ys);
-            const maxY = Math.max(...ys);
-            return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-        default:
-            return { x: 0, y: 0 };
-    }
-}
 
 const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
     const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
@@ -80,6 +60,8 @@ const Canvas: React.FC<CanvasProps> = ({
   activeLayer,
   layers,
   setCoords,
+  snapEnabled,
+  orthoEnabled,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -106,6 +88,12 @@ const Canvas: React.FC<CanvasProps> = ({
   // For mirroring
   const [mirrorLineStart, setMirrorLineStart] = useState<Point | null>(null);
   const [mirrorLineEnd, setMirrorLineEnd] = useState<Point | null>(null);
+  
+  // For snapping
+  const [snapIndicator, setSnapIndicator] = useState<Point | null>(null);
+  
+  // For line drawing info
+  const [drawingInfo, setDrawingInfo] = useState<{ length: number; angle: number } | null>(null);
 
 
   useEffect(() => {
@@ -129,6 +117,7 @@ const Canvas: React.FC<CanvasProps> = ({
             setIsCopying(false);
             setMirrorLineStart(null);
             setMirrorLineEnd(null);
+            setDrawingInfo(null);
         }
         if (e.key === 'Delete' || e.key === 'Backspace') {
             if (selectedShapeId) {
@@ -157,13 +146,84 @@ const Canvas: React.FC<CanvasProps> = ({
       default: return 'crosshair';
     }
   }
+  
+  const getSnapPoint = (mousePos: Point): { snappedPoint: Point; indicator: Point | null } => {
+    if (!snapEnabled || !svgRef.current) {
+      return { snappedPoint: mousePos, indicator: null };
+    }
+
+    const clientWidth = svgRef.current.clientWidth || 1;
+    const zoomFactor = viewBox.w / clientWidth;
+    const snapRadius = 10 * zoomFactor; // 10 pixels in screen space
+
+    let bestSnapPoint: Point | null = null;
+    let minDistanceSq = snapRadius * snapRadius;
+
+    const checkPoint = (p: Point) => {
+      const dx = mousePos.x - p.x;
+      const dy = mousePos.y - p.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < minDistanceSq) {
+        minDistanceSq = distSq;
+        bestSnapPoint = p;
+      }
+    };
+
+    // 1. Snap to Grid
+    const gridSize = 10;
+    const gridPoint = {
+      x: Math.round(mousePos.x / gridSize) * gridSize,
+      y: Math.round(mousePos.y / gridSize) * gridSize,
+    };
+    checkPoint(gridPoint);
+
+    // 2. Snap to Vertices
+    shapes.forEach(shape => {
+      const layer = layers.find(l => l.id === shape.layerId);
+      if (!layer || !layer.visible) return;
+
+      switch (shape.type) {
+        case Tool.LINE:
+          checkPoint(shape.p1);
+          checkPoint(shape.p2);
+          break;
+        case Tool.RECTANGLE:
+        case Tool.IMAGE:
+          const r = shape as RectangleShape | ImageShape;
+          checkPoint({ x: r.x, y: r.y });
+          checkPoint({ x: r.x + r.width, y: r.y });
+          checkPoint({ x: r.x, y: r.y + r.height });
+          checkPoint({ x: r.x + r.width, y: r.y + r.height });
+          break;
+        case Tool.CIRCLE:
+          checkPoint({ x: shape.cx, y: shape.cy });
+          break;
+        case Tool.ARC:
+          checkPoint({ x: shape.cx, y: shape.cy });
+          checkPoint(polarToCartesian(shape.cx, shape.cy, shape.r, shape.startAngle));
+          checkPoint(polarToCartesian(shape.cx, shape.cy, shape.r, shape.endAngle));
+          break;
+        case Tool.POLYLINE:
+          shape.points.forEach(checkPoint);
+          break;
+      }
+    });
+
+    if (bestSnapPoint) {
+      return { snappedPoint: bestSnapPoint, indicator: bestSnapPoint };
+    }
+
+    return { snappedPoint: mousePos, indicator: null };
+  };
 
   const handleMouseDown = (e: MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current) return;
-    const pos = getMousePos(svgRef.current, e);
+    let pos = getMousePos(svgRef.current, e);
+    const { snappedPoint } = getSnapPoint(pos);
+    pos = snappedPoint;
     
+    // FIX: Add type guard to check if event target is an SVGElement before accessing its id.
     if (activeTool === Tool.ERASE) {
-        // FIX: Property 'id' does not exist on type 'EventTarget'. Using a more specific 'SVGElement' type guard resolves this.
         if (e.target instanceof SVGElement && e.target.id.startsWith('shape_')) {
             deleteShape(e.target.id);
         }
@@ -184,8 +244,8 @@ const Canvas: React.FC<CanvasProps> = ({
         return;
     }
 
+    // FIX: Add type guard to check if event target is an SVGElement before accessing its id.
     if (activeTool === Tool.SCALE) {
-        // FIX: Property 'id' does not exist on type 'EventTarget'. Using a more specific 'SVGElement' type guard resolves this.
         if (e.target instanceof SVGElement && e.target.id.startsWith('shape_')) {
             setSelectedShapeId(e.target.id);
             const shapeToScale = shapes.find(s => s.id === e.target.id);
@@ -200,8 +260,8 @@ const Canvas: React.FC<CanvasProps> = ({
         return;
     }
 
+    // FIX: Add type guard to check if event target is an SVGElement before accessing its id.
     if (activeTool === Tool.ROTATE) {
-        // FIX: Property 'id' does not exist on type 'EventTarget'. Using a more specific 'SVGElement' type guard resolves this.
         if (e.target instanceof SVGElement && e.target.id.startsWith('shape_')) {
             setSelectedShapeId(e.target.id);
             const shapeToRotate = shapes.find(s => s.id === e.target.id);
@@ -215,7 +275,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
     
     if (activeTool === Tool.COPY) {
-        // FIX: Property 'id' does not exist on type 'EventTarget'. Using a more specific 'SVGElement' type guard resolves this.
         if (e.target instanceof SVGElement && e.target.id.startsWith('shape_')) {
             const shapeToCopy = shapes.find(s => s.id === e.target.id);
             if (shapeToCopy) {
@@ -251,8 +310,8 @@ const Canvas: React.FC<CanvasProps> = ({
                     
                     switch(mirroredShape.type) {
                         case Tool.LINE:
-                            mirroredShape.p1 = reflectPoint(mirroredShape.p1, mirrorLineStart, pos);
-                            mirroredShape.p2 = reflectPoint(mirroredShape.p2, mirrorLineStart, pos);
+                            (mirroredShape as LineShape).p1 = reflectPoint((mirroredShape as LineShape).p1, mirrorLineStart, pos);
+                            (mirroredShape as LineShape).p2 = reflectPoint((mirroredShape as LineShape).p2, mirrorLineStart, pos);
                             break;
                         case Tool.RECTANGLE:
                         case Tool.IMAGE:
@@ -270,7 +329,7 @@ const Canvas: React.FC<CanvasProps> = ({
                             (mirroredShape as CircleShape | ArcShape).cy = newCircleCenter.y;
                             break;
                         case Tool.POLYLINE:
-                            mirroredShape.points = mirroredShape.points.map(p => reflectPoint(p, mirrorLineStart, pos));
+                            (mirroredShape as PolylineShape).points = (mirroredShape as PolylineShape).points.map(p => reflectPoint(p, mirrorLineStart, pos));
                             break;
                     }
                     addShape(mirroredShape);
@@ -283,7 +342,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
     
     if (activeTool === Tool.SELECT) {
-      // FIX: Property 'id' does not exist on type 'EventTarget'. Using a more specific 'SVGElement' type guard resolves this.
       if (e.target instanceof SVGElement && e.target.id.startsWith('shape_')) {
         setSelectedShapeId(e.target.id);
       } else {
@@ -338,6 +396,8 @@ const Canvas: React.FC<CanvasProps> = ({
             return { x: pos.x, y: pos.y, width: 0, height: 0 };
         case Tool.CIRCLE:
             return { cx: pos.x, cy: pos.y, r: 0 };
+        case Tool.ARC:
+            return { cx: pos.x, cy: pos.y, r: 0, startAngle: 0, endAngle: 180 };
         default:
             return {};
     }
@@ -346,14 +406,52 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const handleMouseMove = (e: MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current) return;
-    const pos = getMousePos(svgRef.current, e);
+    let pos = getMousePos(svgRef.current, e);
     setCoords({ x: parseFloat(pos.x.toFixed(2)), y: parseFloat(pos.y.toFixed(2)) });
+    
+    const { snappedPoint, indicator } = getSnapPoint(pos);
+    pos = snappedPoint;
+    setSnapIndicator(indicator);
+
+    if (isDrawing && orthoEnabled && (currentShape?.type === Tool.LINE || currentShape?.type === Tool.POLYLINE)) {
+        let referencePoint: Point | null = null;
+        if (currentShape.type === Tool.LINE && startPoint) {
+            referencePoint = startPoint;
+        } else if (currentShape.type === Tool.POLYLINE) {
+            const points = (currentShape as PolylineShape).points;
+            if (points.length >= 2) {
+                referencePoint = points[points.length - 2];
+            }
+        }
+
+        if (referencePoint) {
+            const dx = Math.abs(pos.x - referencePoint.x);
+            const dy = Math.abs(pos.y - referencePoint.y);
+
+            if (dx > dy) {
+                pos.y = referencePoint.y; // Snap horizontally
+            } else {
+                pos.x = referencePoint.x; // Snap vertically
+            }
+        }
+    }
+
 
     if (activeTool === Tool.PAN && isDrawing && panStart) {
         const dx = pos.x - panStart.x;
         const dy = pos.y - panStart.y;
         setViewBox(prev => ({ ...prev, x: prev.x - dx, y: prev.y - dy }));
         return;
+    }
+
+    if (isDrawing && currentShape?.type === Tool.LINE && startPoint) {
+        const dx = pos.x - startPoint.x;
+        const dy = pos.y - startPoint.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        setDrawingInfo({ length, angle });
+    } else if (drawingInfo) {
+        setDrawingInfo(null);
     }
 
     if (isScaling && startPoint && originalShapeForScaling) {
@@ -366,7 +464,7 @@ const Canvas: React.FC<CanvasProps> = ({
         const currentDy = pos.y - center.y;
         const currentDist = Math.sqrt(currentDx * currentDx + currentDy * currentDy);
         const scaleFactor = currentDist / initialDist;
-        let scaledShape = { ...originalShapeForScaling };
+        let scaledShape = { ...originalShapeForScaling } as Shape;
         
         switch (scaledShape.type) {
             case Tool.RECTANGLE:
@@ -422,8 +520,8 @@ const Canvas: React.FC<CanvasProps> = ({
 
         switch (movedShape.type) {
             case Tool.LINE:
-                movedShape.p1 = { x: movedShape.p1.x + dx, y: movedShape.p1.y + dy };
-                movedShape.p2 = { x: movedShape.p2.x + dx, y: movedShape.p2.y + dy };
+                (movedShape as LineShape).p1 = { x: (movedShape as LineShape).p1.x + dx, y: (movedShape as LineShape).p1.y + dy };
+                (movedShape as LineShape).p2 = { x: (movedShape as LineShape).p2.x + dx, y: (movedShape as LineShape).p2.y + dy };
                 break;
             case Tool.RECTANGLE:
             case Tool.IMAGE:
@@ -436,7 +534,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 (movedShape as CircleShape | ArcShape).cy += dy;
                 break;
             case Tool.POLYLINE:
-                movedShape.points = movedShape.points.map((p: Point) => ({ x: p.x + dx, y: p.y + dy }));
+                (movedShape as PolylineShape).points = (movedShape as PolylineShape).points.map((p: Point) => ({ x: p.x + dx, y: p.y + dy }));
                 break;
         }
         setCurrentShape(movedShape);
@@ -454,11 +552,11 @@ const Canvas: React.FC<CanvasProps> = ({
       const dx = pos.x - moveStartPoint.x;
       const dy = pos.y - moveStartPoint.y;
 
-      let movedShape = { ...selectedShape };
+      let movedShape = { ...selectedShape } as Shape;
       switch (movedShape.type) {
         case Tool.LINE:
-          movedShape.p1 = { x: movedShape.p1.x + dx, y: movedShape.p1.y + dy };
-          movedShape.p2 = { x: movedShape.p2.x + dx, y: movedShape.p2.y + dy };
+          (movedShape as LineShape).p1 = { x: (movedShape as LineShape).p1.x + dx, y: (movedShape as LineShape).p1.y + dy };
+          (movedShape as LineShape).p2 = { x: (movedShape as LineShape).p2.x + dx, y: (movedShape as LineShape).p2.y + dy };
           break;
         case Tool.RECTANGLE:
         case Tool.IMAGE:
@@ -471,7 +569,7 @@ const Canvas: React.FC<CanvasProps> = ({
           (movedShape as CircleShape | ArcShape).cy += dy;
           break;
         case Tool.POLYLINE:
-          movedShape.points = movedShape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+          (movedShape as PolylineShape).points = (movedShape as PolylineShape).points.map(p => ({ x: p.x + dx, y: p.y + dy }));
           break;
       }
       updateShape(movedShape);
@@ -482,7 +580,7 @@ const Canvas: React.FC<CanvasProps> = ({
     if (!isDrawing) return;
     
     if (currentShape?.type === Tool.POLYLINE) {
-        const updatedPoints = [...currentShape.points];
+        const updatedPoints = [...(currentShape as PolylineShape).points];
         updatedPoints[updatedPoints.length - 1] = pos;
         setCurrentShape({ ...currentShape, points: updatedPoints });
         return;
@@ -490,7 +588,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
     if (!currentShape || !startPoint) return;
     
-    let updatedShape = { ...currentShape };
+    let updatedShape = { ...currentShape } as Shape;
     switch (updatedShape.type) {
       case Tool.LINE:
         (updatedShape as LineShape).p2 = pos;
@@ -503,10 +601,11 @@ const Canvas: React.FC<CanvasProps> = ({
         rect.height = Math.abs(pos.y - startPoint.y);
         break;
       case Tool.CIRCLE:
-        const circle = updatedShape as CircleShape;
+      case Tool.ARC:
         const dx = pos.x - startPoint.x;
         const dy = pos.y - startPoint.y;
-        circle.r = Math.sqrt(dx * dx + dy * dy);
+        const radius = Math.sqrt(dx * dx + dy * dy);
+        (updatedShape as CircleShape | ArcShape).r = radius;
         break;
     }
     setCurrentShape(updatedShape);
@@ -516,27 +615,23 @@ const Canvas: React.FC<CanvasProps> = ({
     if (activeTool === Tool.PAN) {
         setIsDrawing(false);
         setPanStart(null);
-        return;
     }
     
     if (isMoving) {
         setIsMoving(false);
         setMoveStartPoint(null);
-        return;
     }
     
     if (isScaling) {
         setIsScaling(false);
         setStartPoint(null);
         setOriginalShapeForScaling(null);
-        return;
     }
     
     if (isRotating) {
         setIsRotating(false);
         setOriginalShapeForRotation(null);
         setStartPoint(null);
-        return;
     }
 
     if (isCopying && currentShape) {
@@ -545,31 +640,29 @@ const Canvas: React.FC<CanvasProps> = ({
         setIsCopying(false);
         setCurrentShape(null);
         setStartPoint(null);
-        return;
     }
 
     if (activeTool === Tool.MIRROR) {
-        return;
-    }
-
-    if (activeTool === Tool.POLYLINE) {
-        return;
-    }
-
-    if (currentShape) {
+        // No action on mouse up, wait for second click
+    } else if (activeTool === Tool.POLYLINE) {
+        // No action on mouse up, wait for escape or another click
+    } else if (currentShape) {
       if (
-        (currentShape.type === Tool.RECTANGLE && (currentShape.width === 0 || currentShape.height === 0)) ||
-        (currentShape.type === Tool.CIRCLE && currentShape.r === 0) ||
-        (currentShape.type === Tool.LINE && currentShape.p1.x === currentShape.p2.x && currentShape.p1.y === currentShape.p2.y)
+        (currentShape.type === Tool.RECTANGLE && ((currentShape as RectangleShape).width === 0 || (currentShape as RectangleShape).height === 0)) ||
+        (currentShape.type === Tool.LINE && (currentShape as LineShape).p1.x === (currentShape as LineShape).p2.x && (currentShape as LineShape).p1.y === (currentShape as LineShape).p2.y) ||
+        ((currentShape.type === Tool.CIRCLE || currentShape.type === Tool.ARC) && (currentShape as CircleShape | ArcShape).r === 0)
       ) {
          // It's just a click, don't add shape
       } else {
         addShape(currentShape);
       }
+      setIsDrawing(false);
+      setStartPoint(null);
+      setCurrentShape(null);
     }
-    setIsDrawing(false);
-    setStartPoint(null);
-    setCurrentShape(null);
+    
+    setDrawingInfo(null);
+    setSnapIndicator(null);
   };
   
   const renderShape = (shape: Shape) => {
@@ -647,7 +740,11 @@ const Canvas: React.FC<CanvasProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={() => {
+            handleMouseUp();
+            setSnapIndicator(null);
+            setDrawingInfo(null);
+        }}
         style={{ cursor: getCursor() }}
       >
         <defs>
@@ -662,8 +759,33 @@ const Canvas: React.FC<CanvasProps> = ({
         <rect x={viewBox.x} y={viewBox.y} width={viewBox.w / 0.1} height={viewBox.h / 0.1} fill="url(#grid)" />
         {shapes.map(renderShape)}
         {currentShape && renderShape(currentShape)}
+        {isDrawing && currentShape?.type === Tool.LINE && drawingInfo && (
+            <g style={{ pointerEvents: 'none' }}>
+                <text
+                    x={(currentShape as LineShape).p2.x + 10 * (viewBox.w / (svgRef.current?.clientWidth || 1))}
+                    y={(currentShape as LineShape).p2.y + 10 * (viewBox.w / (svgRef.current?.clientWidth || 1))}
+                    fill="#00ffff"
+                    fontSize={12 * (viewBox.w / (svgRef.current?.clientWidth || 1))}
+                    dominantBaseline="hanging"
+                    fontFamily="monospace"
+                >
+                    {`L: ${drawingInfo.length.toFixed(2)} < ${drawingInfo.angle.toFixed(1)}°`}
+                </text>
+            </g>
+        )}
         {mirrorLineStart && mirrorLineEnd && (
             <line x1={mirrorLineStart.x} y1={mirrorLineStart.y} x2={mirrorLineEnd.x} y2={mirrorLineEnd.y} strokeDasharray="5,5" stroke="#3b82f6" strokeWidth="1" />
+        )}
+        {snapIndicator && (
+            <circle
+                cx={snapIndicator.x}
+                cy={snapIndicator.y}
+                r={5 * (viewBox.w / (svgRef.current?.clientWidth || 1))}
+                fill="none"
+                stroke="#00ffff"
+                strokeWidth={1.5 * (viewBox.w / (svgRef.current?.clientWidth || 1))}
+                style={{ pointerEvents: 'none' }}
+            />
         )}
       </svg>
     </div>
