@@ -22,6 +22,7 @@ import { LeaderIcon } from './icons/LeaderIcon';
 import { TableIcon } from './icons/TableIcon';
 import { LayersIcon } from './icons/LayersIcon';
 import { EraseIcon } from './icons/EraseIcon';
+import { SlidersIcon } from './icons/SlidersIcon';
 
 const UndoIcon: React.FC<{ className: string }> = ({ className }) => (
   <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -45,6 +46,7 @@ interface HeaderProps {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  setMobilePanel: (panel: 'PROPERTIES' | 'LAYERS' | null) => void;
 }
 
 const ToolButton: React.FC<{
@@ -106,12 +108,12 @@ const complexToolAlert = (toolName: string) => {
     alert(`${toolName} functionality is not yet implemented through interactive controls. Please use the command line. For example: "create a 3x4 array of the selected object with 50px spacing"`);
 };
 
-const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo }) => {
+const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo, setMobilePanel }) => {
   return (
-    <header className="bg-gray-800 border-b border-gray-700 flex flex-col">
-        <div className="flex items-center px-4 h-8">
-            <div className="text-xl font-bold text-red-500 mr-6">A</div>
-            <div className="flex space-x-4 text-sm">
+    <header className="bg-gray-800 border-b border-gray-700 flex flex-col shrink-0">
+        <div className="flex items-center px-2 md:px-4 h-10 md:h-8">
+            <div className="text-xl font-bold text-red-500 mr-4 md:mr-6">A</div>
+            <div className="hidden md:flex space-x-4 text-sm">
                 <button className="text-white bg-gray-700 px-3 py-1 rounded-t-sm">Home</button>
                 <button className="text-gray-400 hover:text-white">Insert</button>
                 <button className="text-gray-400 hover:text-white">Annotate</button>
@@ -119,8 +121,15 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                 <button className="text-gray-400 hover:text-white">View</button>
                 <button className="text-gray-400 hover:text-white">Manage</button>
             </div>
+            <div className="flex-grow"></div>
+            {/* Mobile Panel Toggles */}
+            <div className="flex md:hidden items-center space-x-2">
+                 <button onClick={() => setMobilePanel('LAYERS')} className="p-2 rounded-md hover:bg-gray-700 text-gray-300" aria-label="Toggle Layers Panel"><LayersIcon className="w-6 h-6" /></button>
+                 <button onClick={() => setMobilePanel('PROPERTIES')} className="p-2 rounded-md hover:bg-gray-700 text-gray-300" aria-label="Toggle Properties Panel"><SlidersIcon className="w-6 h-6" /></button>
+            </div>
         </div>
-        <div className="flex bg-gray-800 h-[110px] items-stretch p-1">
+        
+        <div className="hidden md:flex bg-gray-800 h-[110px] items-stretch p-1">
              <ToolGroup title="Draw">
                 <div className="flex items-start">
                     <div className="flex flex-col items-center">
@@ -182,6 +191,30 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                     <ToolButton Icon={HandIcon} label="Pan" isActive={activeTool === Tool.PAN} onClick={() => setActiveTool(Tool.PAN)} />
                  </div>
              </ToolGroup>
+        </div>
+
+        {/* Mobile Toolbar */}
+        <div className="md:hidden flex items-center bg-gray-800 p-1 overflow-x-auto">
+            <div className="flex space-x-1">
+                <ToolButton Icon={CursorIcon} label="Select" isActive={activeTool === Tool.SELECT} onClick={() => setActiveTool(Tool.SELECT)} />
+                <ToolButton Icon={HandIcon} label="Pan" isActive={activeTool === Tool.PAN} onClick={() => setActiveTool(Tool.PAN)} />
+                <div className="border-l border-gray-700 mx-1"></div>
+                <ToolButton Icon={LineIcon} label="Line" isActive={activeTool === Tool.LINE} onClick={() => setActiveTool(Tool.LINE)} />
+                <ToolButton Icon={PolylineIcon} label="Polyline" isActive={activeTool === Tool.POLYLINE} onClick={() => setActiveTool(Tool.POLYLINE)} />
+                <ToolButton Icon={RectangleIcon} label="Rectangle" isActive={activeTool === Tool.RECTANGLE} onClick={() => setActiveTool(Tool.RECTANGLE)} />
+                <ToolButton Icon={CircleIcon} label="Circle" isActive={activeTool === Tool.CIRCLE} onClick={() => setActiveTool(Tool.CIRCLE)} />
+                <ToolButton Icon={ArcIcon} label="Arc" isActive={activeTool === Tool.ARC} onClick={() => setActiveTool(Tool.ARC)} />
+                <div className="border-l border-gray-700 mx-1"></div>
+                <ToolButton Icon={MoveIcon} label="Move" isActive={activeTool === Tool.MOVE} onClick={() => setActiveTool(Tool.MOVE)} />
+                <ToolButton Icon={CopyIcon} label="Copy" isActive={activeTool === Tool.COPY} onClick={() => setActiveTool(Tool.COPY)} />
+                <ToolButton Icon={RotateIcon} label="Rotate" isActive={activeTool === Tool.ROTATE} onClick={() => setActiveTool(Tool.ROTATE)} />
+                <ToolButton Icon={ScaleIcon} label="Scale" isActive={activeTool === Tool.SCALE} onClick={() => setActiveTool(Tool.SCALE)} />
+                <ToolButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
+                <ToolButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
+                <div className="border-l border-gray-700 mx-1"></div>
+                <ToolButton Icon={UndoIcon} label="Undo" isActive={false} onClick={undo} disabled={!canUndo} />
+                <ToolButton Icon={RedoIcon} label="Redo" isActive={false} onClick={redo} disabled={!canRedo} />
+            </div>
         </div>
     </header>
   );

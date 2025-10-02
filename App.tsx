@@ -57,6 +57,7 @@ const shapeModificationSchema = {
 
 const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState<Tool>(Tool.SELECT);
+  const [mobilePanel, setMobilePanel] = useState<'PROPERTIES' | 'LAYERS' | null>(null);
 
   const defaultLayer: Layer = { id: 'layer_0', name: 'Layer 0', color: '#FFFFFF', visible: true };
   const [layers, setLayers] = useState<Layer[]>([defaultLayer]);
@@ -296,6 +297,7 @@ const App: React.FC = () => {
         redo={redo}
         canUndo={canUndo}
         canRedo={canRedo}
+        setMobilePanel={setMobilePanel}
       />
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 relative bg-gray-900">
@@ -314,7 +316,9 @@ const App: React.FC = () => {
             orthoEnabled={orthoEnabled}
           />
         </main>
-        <aside className="w-64 flex flex-col bg-gray-800 border-l border-gray-700">
+        
+        {/* Desktop Sidebar */}
+        <aside className="w-64 flex-col bg-gray-800 border-l border-gray-700 hidden md:flex">
           <PropertiesPanel
             selectedShape={selectedShape}
             updateShape={updateShape}
@@ -329,6 +333,23 @@ const App: React.FC = () => {
             updateLayer={updateLayer}
           />
         </aside>
+
+        {/* Mobile Panel Overlay */}
+        {mobilePanel && (
+            <div className="md:hidden absolute inset-0 bg-gray-800 z-20 flex flex-col">
+                 <div className="p-2 border-b border-gray-700 flex justify-between items-center bg-gray-900">
+                    <h3 className="text-md font-semibold text-gray-200">{mobilePanel === 'PROPERTIES' ? 'Properties' : 'Layers'}</h3>
+                    <button onClick={() => setMobilePanel(null)} className="p-2 rounded-md hover:bg-gray-700">
+                         <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                    {mobilePanel === 'PROPERTIES' && <PropertiesPanel selectedShape={selectedShape} updateShape={updateShape} deleteShape={deleteShape} layers={layers} />}
+                    {mobilePanel === 'LAYERS' && <LayersPanel layers={layers} activeLayerId={activeLayerId} setActiveLayerId={setActiveLayerId} addLayer={addLayer} updateLayer={updateLayer} />}
+                </div>
+            </div>
+        )}
+
       </div>
       <CommandLine handleCommand={handleCommand} isGenerating={isGenerating} />
       <StatusBar 

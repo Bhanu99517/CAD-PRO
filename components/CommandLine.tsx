@@ -16,7 +16,7 @@ const CommandLine: React.FC<CommandLineProps> = ({ handleCommand, isGenerating }
   };
 
   return (
-    <div className="h-8 bg-gray-800 border-t border-gray-700 flex items-center px-4 text-sm font-mono">
+    <div className="h-8 bg-gray-800 border-t border-gray-700 flex items-center px-4 text-sm font-mono shrink-0">
       <span className="text-gray-400 mr-2">Type a command:</span>
       <form onSubmit={handleSubmit} className="w-full">
         <input 

@@ -30,15 +30,15 @@ const StatusBarButton: React.FC<{
 
 const StatusBar: React.FC<StatusBarProps> = ({ coords, snapEnabled, setSnapEnabled, orthoEnabled, setOrthoEnabled }) => {
   return (
-    <div className="h-6 bg-gray-800 border-t border-gray-700 flex items-center text-xs text-gray-400 font-sans">
-      <div className="flex-1">
-        {/* Can put model/layout tabs here later */}
+    <div className="h-6 bg-gray-800 border-t border-gray-700 flex items-center text-xs text-gray-400 font-sans shrink-0">
+      <div className="flex-1 px-2 md:px-0">
+        <span className="hidden md:inline">Model</span>
       </div>
       <div className="flex items-center h-full">
-        <StatusBarItem className="w-40 font-mono">
+        <StatusBarItem className="w-32 md:w-40 font-mono">
             {coords.x.toFixed(2)}, {coords.y.toFixed(2)}
         </StatusBarItem>
-        <StatusBarItem>GRID</StatusBarItem>
+        <StatusBarItem className="hidden sm:flex">GRID</StatusBarItem>
         <StatusBarButton onClick={() => setOrthoEnabled(prev => !prev)} isActive={orthoEnabled}>
             ORTHO
         </StatusBarButton>

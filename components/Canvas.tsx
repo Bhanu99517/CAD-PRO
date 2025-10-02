@@ -95,6 +95,13 @@ const Canvas: React.FC<CanvasProps> = ({
   // For line drawing info
   const [drawingInfo, setDrawingInfo] = useState<{ length: number; angle: number } | null>(null);
 
+  // Touch/Zoom state
+  const touchState = useRef<{
+    lastDist: number | null,
+    lastMidpoint: Point | null,
+    isTwoFinger: boolean
+  }>({ lastDist: null, lastMidpoint: null, isTwoFinger: false }).current;
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -222,8 +229,8 @@ const Canvas: React.FC<CanvasProps> = ({
     const { snappedPoint } = getSnapPoint(pos);
     pos = snappedPoint;
     
-    // FIX: Add type guard to check if event target is an SVGElement before accessing its id.
     if (activeTool === Tool.ERASE) {
+        // FIX: Added a type guard to check if the event target is an SVGElement before accessing its `id` property.
         if (e.target instanceof SVGElement && e.target.id.startsWith('shape_')) {
             deleteShape(e.target.id);
         }
@@ -244,8 +251,8 @@ const Canvas: React.FC<CanvasProps> = ({
         return;
     }
 
-    // FIX: Add type guard to check if event target is an SVGElement before accessing its id.
     if (activeTool === Tool.SCALE) {
+        // FIX: Added a type guard to check if the event target is an SVGElement before accessing its `id` property.
         if (e.target instanceof SVGElement && e.target.id.startsWith('shape_')) {
             setSelectedShapeId(e.target.id);
             const shapeToScale = shapes.find(s => s.id === e.target.id);
@@ -260,8 +267,8 @@ const Canvas: React.FC<CanvasProps> = ({
         return;
     }
 
-    // FIX: Add type guard to check if event target is an SVGElement before accessing its id.
     if (activeTool === Tool.ROTATE) {
+        // FIX: Added a type guard to check if the event target is an SVGElement before accessing its `id` property.
         if (e.target instanceof SVGElement && e.target.id.startsWith('shape_')) {
             setSelectedShapeId(e.target.id);
             const shapeToRotate = shapes.find(s => s.id === e.target.id);
@@ -664,7 +671,127 @@ const Canvas: React.FC<CanvasProps> = ({
     setDrawingInfo(null);
     setSnapIndicator(null);
   };
-  
+
+  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+      if (!svgRef.current) return;
+      e.preventDefault();
+      
+      const pos = getMousePos(svgRef.current, e as any);
+      const zoomFactor = 1.1;
+      const newViewBox = { ...viewBox };
+
+      if (e.deltaY < 0) { // Zoom in
+          newViewBox.w /= zoomFactor;
+          newViewBox.h /= zoomFactor;
+      } else { // Zoom out
+          newViewBox.w *= zoomFactor;
+          newViewBox.h *= zoomFactor;
+      }
+
+      newViewBox.x = pos.x - (pos.x - viewBox.x) * (newViewBox.w / viewBox.w);
+      newViewBox.y = pos.y - (pos.y - viewBox.y) * (newViewBox.h / viewBox.h);
+      
+      setViewBox(newViewBox);
+  };
+
+  const getTouchPos = (svg: SVGSVGElement, touch: React.Touch): Point => {
+      const CTM = svg.getScreenCTM();
+      if (CTM) {
+          return {
+              x: (touch.clientX - CTM.e) / CTM.a,
+              y: (touch.clientY - CTM.f) / CTM.d,
+          };
+      }
+      return { x: 0, y: 0 };
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
+      if (!svgRef.current) return;
+
+      if (e.touches.length === 2) {
+          e.preventDefault();
+          touchState.isTwoFinger = true;
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const dx = t1.clientX - t2.clientX;
+          const dy = t1.clientY - t2.clientY;
+          touchState.lastDist = Math.sqrt(dx * dx + dy * dy);
+          
+          const p1 = getTouchPos(svgRef.current, t1);
+          const p2 = getTouchPos(svgRef.current, t2);
+          touchState.lastMidpoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+
+      } else if (e.touches.length === 1) {
+          touchState.isTwoFinger = false;
+          const touch = e.touches[0];
+          // Simulate mouse down
+          handleMouseDown({
+              ...e,
+              clientX: touch.clientX,
+              clientY: touch.clientY,
+          } as any);
+      }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+      if (!svgRef.current) return;
+
+      if (e.touches.length === 2 && touchState.isTwoFinger) {
+            e.preventDefault();
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const dx = t1.clientX - t2.clientX;
+          const dy = t1.clientY - t2.clientY;
+          const currentDist = Math.sqrt(dx*dx + dy*dy);
+          
+          const p1 = getTouchPos(svgRef.current, t1);
+          const p2 = getTouchPos(svgRef.current, t2);
+          const midpoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+
+          if (touchState.lastDist && touchState.lastMidpoint) {
+              // Zoom
+              const scale = touchState.lastDist / currentDist;
+              const newViewBox = {...viewBox};
+              newViewBox.w = viewBox.w * scale;
+              newViewBox.h = viewBox.h * scale;
+              newViewBox.x = midpoint.x - (midpoint.x - viewBox.x) * scale;
+              newViewBox.y = midpoint.y - (midpoint.y - viewBox.y) * scale;
+
+              // Pan
+              const panDx = touchState.lastMidpoint.x - midpoint.x;
+              const panDy = touchState.lastMidpoint.y - midpoint.y;
+              newViewBox.x += panDx;
+              newViewBox.y += panDy;
+              
+              setViewBox(newViewBox);
+          }
+
+          touchState.lastDist = currentDist;
+          touchState.lastMidpoint = midpoint;
+
+      } else if (e.touches.length === 1 && !touchState.isTwoFinger) {
+          const touch = e.touches[0];
+          // Simulate mouse move
+            handleMouseMove({
+              ...e,
+              clientX: touch.clientX,
+              clientY: touch.clientY,
+          } as any);
+      }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
+      if (e.touches.length < 2) {
+            touchState.isTwoFinger = false;
+            touchState.lastDist = null;
+            touchState.lastMidpoint = null;
+      }
+      if (e.touches.length === 0) {
+          // Simulate mouse up
+          handleMouseUp();
+      }
+  };
+
   const renderShape = (shape: Shape) => {
     const isSelected = shape.id === selectedShapeId;
     const layer = layers.find(l => l.id === shape.layerId);
@@ -732,7 +859,7 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 bg-gray-900 overflow-hidden">
+    <div className="absolute inset-0 bg-gray-900 overflow-hidden" style={{ touchAction: 'none' }}>
       <svg
         ref={svgRef}
         className="w-full h-full bg-[#1e293b]"
@@ -745,6 +872,10 @@ const Canvas: React.FC<CanvasProps> = ({
             setSnapIndicator(null);
             setDrawingInfo(null);
         }}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         style={{ cursor: getCursor() }}
       >
         <defs>
