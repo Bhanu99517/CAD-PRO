@@ -22,6 +22,8 @@ export enum Tool {
   TABLE = 'TABLE',
   LAYER_PROPERTIES = 'LAYER_PROPERTIES',
   ERASE = 'ERASE',
+  EXTRUDE = 'EXTRUDE',
+  PRESS_PULL = 'PRESS_PULL',
 }
 
 export interface Point {

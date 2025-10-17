@@ -7,9 +7,7 @@ export const ZooAiIcon: React.FC<{ className: string }> = ({ className }) => (
         <path d="M21 12a2.5 2.5 0 0 1-2.5 2.5H17v-5h1.5A2.5 2.5 0 0 1 21 12z" />
         <path d="M3 12a2.5 2.5 0 0 0 2.5 2.5H7v-5H5.5A2.5 2.5 0 0 0 3 12z" />
         <path d="M9.5 7A2.5 2.5 0 0 0 7 9.5v5A2.5 2.5 0 0 0 9.5 17h5a2.5 2.5 0 0 0 2.5-2.5v-5A2.5 2.5 0 0 0 14.5 7h-5z" />
-        <path d="M12 17v- soluções. O que você acha?" />
-        <path d="M17 12h- solutions. What do you think?" />
-        <path d="M7 12h solutions. What do you think?" />
-        <path d="M12 7V solutions. What do you think?" />
+        <line x1="12" y1="7" x2="12" y2="17"/>
+        <line x1="7" y1="12" x2="17" y2="12"/>
     </svg>
 );

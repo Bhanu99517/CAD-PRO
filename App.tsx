@@ -4,7 +4,7 @@ import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, Rectangl
 import Header from './components/Header';
 import Canvas from './components/Canvas';
 import PropertiesPanel from './components/PropertiesPanel';
-import LayersPanel from './components/LayersPanel';
+import LayersPanel from './LayersPanel';
 import CommandLine from './components/CommandLine';
 import StatusBar from './components/StatusBar';
 import ZooAiPanel from './components/ZooAiPanel';
@@ -157,11 +157,27 @@ const App: React.FC = () => {
     setShapesAndHistory(shapes.map(s => (s.id === updatedShape.id ? updatedShape : s)));
   };
 
+  const updateShapes = (updatedShapes: Shape[]) => {
+    const updatedShapesMap = new Map(updatedShapes.map(s => [s.id, s]));
+    const newShapes = shapes.map(shape => updatedShapesMap.get(shape.id) || shape);
+    setShapesAndHistory(newShapes);
+  };
+
   const deleteShape = (id: string) => {
     setShapesAndHistory(shapes.filter(shape => shape.id !== id));
     if (selectedShapeId === id) {
       setSelectedShapeId(null);
     }
+  };
+
+  const extrudeShape = (shapeId: string, newShapes: Shape[]) => {
+      const currentShapes = history[historyIndex];
+      const nextShapes = currentShapes.filter(s => s.id !== shapeId).concat(newShapes);
+      setShapesAndHistory(nextShapes);
+      if (selectedShapeId === shapeId) {
+          setSelectedShapeId(null);
+      }
+      setActiveTool(Tool.SELECT);
   };
 
   const canUndo = historyIndex > 0;
@@ -529,6 +545,7 @@ const App: React.FC = () => {
             shapes={shapes}
             addShape={addShape}
             updateShape={updateShape}
+            updateShapes={updateShapes}
             deleteShape={deleteShape}
             selectedShapeId={selectedShapeId}
             setSelectedShapeId={setSelectedShapeId}
@@ -537,6 +554,7 @@ const App: React.FC = () => {
             setCoords={setCoords}
             snapEnabled={snapEnabled}
             orthoEnabled={orthoEnabled}
+            extrudeShape={extrudeShape}
           />
         </main>
         

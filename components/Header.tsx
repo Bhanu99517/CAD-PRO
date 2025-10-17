@@ -24,8 +24,14 @@ import { LayersIcon } from './icons/LayersIcon';
 import { EraseIcon } from './icons/EraseIcon';
 import { SlidersIcon } from './icons/SlidersIcon';
 import { ExtrudeIcon } from './icons/ExtrudeIcon';
-import { PresspullIcon } from './icons/PresspullIcon';
 import { ZooAiIcon } from './icons/ZooAiIcon';
+import { BoxIcon } from './icons/BoxIcon';
+import { SmoothObjectIcon } from '../SmoothObjectIcon';
+import { MeshIcon } from './icons/MeshIcon';
+import { SolidEditingIcon } from './icons/SolidEditingIcon';
+import { SectionPlaneIcon } from './icons/SectionPlaneIcon';
+import { PresspullIcon } from './icons/PresspullIcon';
+
 
 const UndoIcon: React.FC<{ className: string }> = ({ className }) => (
   <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -116,6 +122,10 @@ const modelingToolAlert = (toolName: string) => {
     alert(`${toolName} functionality is available via the command line. Please select a shape and try a command like: "extrude selected shape by 50"`);
 };
 
+const threeDToolAlert = (toolName: string) => {
+    alert(`${toolName} is a 3D modeling tool and is not yet implemented in this 2D version.`);
+};
+
 const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo, setMobilePanel, onToggleZooAiPanel }) => {
   return (
     <header className="bg-gray-800 border-b border-gray-700 flex flex-col shrink-0">
@@ -123,11 +133,16 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
             <div className="text-xl font-bold text-red-500 mr-4 md:mr-6">A</div>
             <div className="hidden md:flex space-x-4 text-sm">
                 <button className="text-white bg-gray-700 px-3 py-1 rounded-t-sm">Home</button>
+                <button className="text-gray-400 hover:text-white">Solid</button>
+                <button className="text-gray-400 hover:text-white">Surface</button>
+                <button className="text-gray-400 hover:text-white">Mesh</button>
+                <button className="text-gray-400 hover:text-white">Visualize</button>
+                <button className="text-gray-400 hover:text-white">Parametric</button>
                 <button className="text-gray-400 hover:text-white">Insert</button>
                 <button className="text-gray-400 hover:text-white">Annotate</button>
-                <button className="text-gray-400 hover:text-white">Parametric</button>
                 <button className="text-gray-400 hover:text-white">View</button>
                 <button className="text-gray-400 hover:text-white">Manage</button>
+                <button className="text-gray-400 hover:text-white">Output</button>
             </div>
             <div className="flex-grow"></div>
             {/* Mobile Panel Toggles */}
@@ -138,6 +153,25 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
         </div>
         
         <div className="hidden md:flex bg-gray-800 h-[110px] items-stretch p-1">
+            <ToolGroup title="Modeling">
+                <div className="flex items-start">
+                    <ToolButton Icon={BoxIcon} label="Box" onClick={() => threeDToolAlert('Box')} isActive={false} large/>
+                     <div className="flex flex-col space-y-1 ml-1">
+                        <SmallToolButton Icon={ExtrudeIcon} label="Extrude" isActive={activeTool === Tool.EXTRUDE} onClick={() => setActiveTool(Tool.EXTRUDE)} />
+                        <SmallToolButton Icon={PresspullIcon} label="Press-pull" isActive={activeTool === Tool.PRESS_PULL} onClick={() => setActiveTool(Tool.PRESS_PULL)} />
+                        <SmallToolButton Icon={SmoothObjectIcon} label="Smooth Object" onClick={() => threeDToolAlert('Smooth Object')} />
+                    </div>
+                </div>
+            </ToolGroup>
+
+            <ToolGroup title="Mesh">
+                <ToolButton Icon={MeshIcon} label="Mesh Tools" onClick={() => threeDToolAlert('Mesh Tools')} isActive={false} />
+            </ToolGroup>
+
+            <ToolGroup title="Solid Editing">
+                <ToolButton Icon={SolidEditingIcon} label="Boolean Ops" onClick={() => threeDToolAlert('Solid Editing Tools')} isActive={false} />
+            </ToolGroup>
+            
              <ToolGroup title="Draw">
                 <div className="flex items-start">
                     <div className="flex flex-col items-center">
@@ -148,29 +182,29 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                         <SmallToolButton Icon={CircleIcon} label="Circle" isActive={activeTool === Tool.CIRCLE} onClick={() => setActiveTool(Tool.CIRCLE)} />
                         <SmallToolButton Icon={ArcIcon} label="Arc" isActive={activeTool === Tool.ARC} onClick={() => setActiveTool(Tool.ARC)} />
                     </div>
+                     <div className="flex flex-col space-y-1 ml-1">
+                        <SmallToolButton Icon={RectangleIcon} label="Rectangle" isActive={activeTool === Tool.RECTANGLE} onClick={() => setActiveTool(Tool.RECTANGLE)} />
+                    </div>
                 </div>
             </ToolGroup>
 
             <ToolGroup title="Modify">
                 <div className="grid grid-cols-3 gap-1">
                     <ToolButton Icon={MoveIcon} label="Move" isActive={activeTool === Tool.MOVE} onClick={() => setActiveTool(Tool.MOVE)} />
-                    <ToolButton Icon={RotateIcon} label="Rotate" isActive={activeTool === Tool.ROTATE} onClick={() => setActiveTool(Tool.ROTATE)} />
-                    <ToolButton Icon={TrimIcon} label="Trim" onClick={() => complexToolAlert('Trim')} isActive={false} />
                     <ToolButton Icon={CopyIcon} label="Copy" isActive={activeTool === Tool.COPY} onClick={() => setActiveTool(Tool.COPY)} />
-                    <ToolButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
-                    <ToolButton Icon={FilletIcon} label="Fillet" onClick={() => complexToolAlert('Fillet')} isActive={false} />
                     <ToolButton Icon={StretchIcon} label="Stretch" onClick={() => complexToolAlert('Stretch')} isActive={false} />
+                    <ToolButton Icon={RotateIcon} label="Rotate" isActive={activeTool === Tool.ROTATE} onClick={() => setActiveTool(Tool.ROTATE)} />
+                    <ToolButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
                     <ToolButton Icon={ScaleIcon} label="Scale" isActive={activeTool === Tool.SCALE} onClick={() => setActiveTool(Tool.SCALE)} />
+                    <ToolButton Icon={TrimIcon} label="Trim" onClick={() => complexToolAlert('Trim')} isActive={false} />
+                    <ToolButton Icon={FilletIcon} label="Fillet" onClick={() => complexToolAlert('Fillet')} isActive={false} />
                     <ToolButton Icon={ArrayIcon} label="Array" onClick={() => complexToolAlert('Array')} isActive={false} />
                     <ToolButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
                 </div>
             </ToolGroup>
-            
-            <ToolGroup title="Modeling">
-                <div className="flex items-start">
-                    <ToolButton Icon={ExtrudeIcon} label="Extrude" onClick={() => modelingToolAlert('Extrude')} isActive={false} />
-                    <ToolButton Icon={PresspullIcon} label="Presspull" onClick={() => modelingToolAlert('Presspull')} isActive={false} />
-                </div>
+
+            <ToolGroup title="Section">
+                <ToolButton Icon={SectionPlaneIcon} label="Section Plane" onClick={() => threeDToolAlert('Section Plane')} isActive={false} large />
             </ToolGroup>
 
              <ToolGroup title="Annotation">

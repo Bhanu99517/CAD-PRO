@@ -1,8 +1,8 @@
 import React from 'react';
-import { Layer } from '../types';
-import { PlusIcon } from './icons/PlusIcon';
-import { EyeIcon } from './icons/EyeIcon';
-import { EyeOffIcon } from './icons/EyeOffIcon';
+import { Layer } from './types';
+import { PlusIcon } from './components/icons/PlusIcon';
+import { EyeIcon } from './components/icons/EyeIcon';
+import { EyeOffIcon } from './components/icons/EyeOffIcon';
 
 interface LayersPanelProps {
   layers: Layer[];
