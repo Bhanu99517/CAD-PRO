@@ -7,6 +7,7 @@ import PropertiesPanel from './components/PropertiesPanel';
 import LayersPanel from './components/LayersPanel';
 import CommandLine from './components/CommandLine';
 import StatusBar from './components/StatusBar';
+import ZooAiPanel from './components/ZooAiPanel';
 import { getShapeCenter } from './utils';
 
 const shapeCreationSchema = {
@@ -55,9 +56,74 @@ const shapeModificationSchema = {
     required: ['action', 'target']
 };
 
+const modelingSchema = {
+    type: Type.OBJECT,
+    properties: {
+        action: {
+            type: Type.STRING,
+            description: 'The modeling action to perform. Must be one of: "extrude", "presspull".',
+            enum: ['extrude', 'presspull']
+        },
+        target: {
+            type: Type.STRING,
+            description: "The target of the action. Always use 'selected'.",
+            enum: ['selected']
+        },
+        height: { type: Type.NUMBER, description: "The extrusion height or distance." },
+    },
+    required: ['action', 'target', 'height']
+};
+
+const modelPartSchema = {
+    type: Type.OBJECT,
+    properties: {
+        shapeType: { type: Type.STRING, enum: ['line', 'rectangle', 'circle', 'arc', 'polyline'] },
+        x1: { type: Type.NUMBER, description: "The x-coordinate for the start of a line." }, 
+        y1: { type: Type.NUMBER, description: "The y-coordinate for the start of a line." }, 
+        x2: { type: Type.NUMBER, description: "The x-coordinate for the end of a line." }, 
+        y2: { type: Type.NUMBER, description: "The y-coordinate for the end of a line." },
+        x: { type: Type.NUMBER, description: "The x-coordinate for a rectangle's top-left corner." }, 
+        y: { type: Type.NUMBER, description: "The y-coordinate for a rectangle's top-left corner." }, 
+        width: { type: Type.NUMBER, description: "The width of a rectangle." }, 
+        height: { type: Type.NUMBER, description: "The height of a rectangle." },
+        cx: { type: Type.NUMBER, description: "The x-coordinate for a circle or arc's center." }, 
+        cy: { type: Type.NUMBER, description: "The y-coordinate for a circle or arc's center." }, 
+        radius: { type: Type.NUMBER, description: "The radius of a circle or arc." },
+        startAngle: { type: Type.NUMBER, description: "The start angle for an arc in degrees." }, 
+        endAngle: { type: Type.NUMBER, description: "The end angle for an arc in degrees." },
+        points: { 
+            type: Type.ARRAY,
+            description: "An array of {x, y} points for a polyline.",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    x: { type: Type.NUMBER },
+                    y: { type: Type.NUMBER }
+                },
+                required: ['x', 'y']
+            }
+        }
+    },
+    required: ['shapeType']
+};
+
+const modelGenerationSchema = {
+    type: Type.OBJECT,
+    properties: {
+        modelParts: {
+            type: Type.ARRAY,
+            description: 'An array of 2D shapes (lines, rectangles, circles, arcs, polylines) that compose the requested model.',
+            items: modelPartSchema
+        }
+    },
+    required: ['modelParts']
+};
+
+
 const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState<Tool>(Tool.SELECT);
   const [mobilePanel, setMobilePanel] = useState<'PROPERTIES' | 'LAYERS' | null>(null);
+  const [isZooAiPanelOpen, setIsZooAiPanelOpen] = useState(false);
 
   const defaultLayer: Layer = { id: 'layer_0', name: 'Layer 0', color: '#FFFFFF', visible: true };
   const [layers, setLayers] = useState<Layer[]>([defaultLayer]);
@@ -145,6 +211,84 @@ const App: React.FC = () => {
   const updateLayer = useCallback((updatedLayer: Layer) => {
     setLayers(prev => prev.map(l => l.id === updatedLayer.id ? updatedLayer : l));
   }, []);
+
+  const handleZooAiGenerate = useCallback(async (command: string) => {
+    if (!command.trim()) return;
+
+    setIsGenerating(true);
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: `Generate a 2D model based on the following user request. The model should be composed of basic 2D shapes (lines, rectangles, circles, arcs, polylines). The entire model should fit within a 400x400 bounding box, centered around the point (300, 300). Use an isometric or simplified 3D-like projection if the object is three-dimensional. Request: '${command}'. Respond in JSON format according to the provided schema.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: modelGenerationSchema,
+            }
+        });
+
+        const jsonStr = response.text.trim();
+        const modelData = JSON.parse(jsonStr);
+
+        if (modelData.modelParts && Array.isArray(modelData.modelParts)) {
+            const newShapes: Shape[] = [];
+            modelData.modelParts.forEach((part: any) => {
+                let newShape: Shape | null = null;
+                const commonProps = {
+                    id: `shape_${Date.now()}_${Math.random()}`,
+                    layerId: activeLayerId,
+                    color: '#FFFFFF',
+                    strokeWidth: 2,
+                    rotation: 0,
+                };
+
+                switch (part.shapeType) {
+                    case 'circle':
+                        if (part.radius > 0) {
+                            newShape = { ...commonProps, type: Tool.CIRCLE, cx: part.cx, cy: part.cy, r: part.radius } as CircleShape;
+                        }
+                        break;
+                    case 'rectangle':
+                        if (part.width > 0 && part.height > 0) {
+                            newShape = { ...commonProps, type: Tool.RECTANGLE, x: part.x, y: part.y, width: part.width, height: part.height } as RectangleShape;
+                        }
+                        break;
+                    case 'line':
+                        if (part.x1 != null && part.y1 != null && part.x2 != null && part.y2 != null) {
+                            newShape = { ...commonProps, type: Tool.LINE, p1: { x: part.x1, y: part.y1 }, p2: { x: part.x2, y: part.y2 } } as LineShape;
+                        }
+                        break;
+                    case 'arc':
+                        if (part.radius > 0 && part.startAngle != null && part.endAngle != null) {
+                            newShape = { ...commonProps, type: Tool.ARC, cx: part.cx, cy: part.cy, r: part.radius, startAngle: part.startAngle, endAngle: part.endAngle } as ArcShape;
+                        }
+                        break;
+                    case 'polyline':
+                        if (part.points && part.points.length > 0) {
+                            newShape = { ...commonProps, type: Tool.POLYLINE, points: part.points } as PolylineShape;
+                        }
+                        break;
+                }
+                if (newShape) {
+                    newShapes.push(newShape);
+                }
+            });
+
+            if (newShapes.length > 0) {
+                setShapesAndHistory([...shapes, ...newShapes]);
+                setIsZooAiPanelOpen(false); // Close panel on success
+            } else {
+                console.warn("AI generated a model with no valid parts.", modelData);
+            }
+        } else {
+            console.warn("Could not generate a valid model from the command.", modelData);
+        }
+    } catch(error) {
+        console.error('Error generating model with Zoo AI:', error);
+    } finally {
+        setIsGenerating(false);
+    }
+  }, [activeLayerId, shapes, history, historyIndex]);
   
   const handleCommand = useCallback(async (command: string) => {
     if (!command.trim()) return;
@@ -152,8 +296,25 @@ const App: React.FC = () => {
     const commandLower = command.toLowerCase();
     const drawKeywords = ['draw', 'make', 'create', 'add'];
     const modifyKeywords = ['move', 'rotate', 'scale', 'delete', 'remove', 'change', 'modify', 'resize', 'spin'];
+    const modelingKeywords = ['extrude', 'presspull'];
+    const modelGenKeywords = ['model', 'build', 'design', 'generate a model of'];
+    const zooAiKeyword = 'zoo ai';
+    
+    if (commandLower.startsWith(zooAiKeyword)) {
+        setIsZooAiPanelOpen(true);
+        return;
+    }
+
     const isDrawCommand = drawKeywords.some(kw => commandLower.startsWith(kw));
     const isModifyCommand = modifyKeywords.some(kw => commandLower.includes(kw));
+    const isModelingCommand = modelingKeywords.some(kw => commandLower.includes(kw));
+    const isModelGenCommand = modelGenKeywords.some(kw => commandLower.startsWith(kw));
+
+    if (isModelGenCommand) {
+        handleZooAiGenerate(command);
+        return;
+    }
+
 
     setIsGenerating(true);
     try {
@@ -213,7 +374,6 @@ const App: React.FC = () => {
         const selectedShape = shapes.find(s => s.id === selectedShapeId);
         if (!selectedShape) {
           console.warn("Please select a shape before using a modification command.");
-          // TODO: Provide user feedback in the UI
           setIsGenerating(false);
           return;
         }
@@ -262,6 +422,68 @@ const App: React.FC = () => {
                 break;
         }
         updateShape(updatedShape);
+      } else if (isModelingCommand) {
+        const selectedShape = shapes.find(s => s.id === selectedShapeId);
+        if (!selectedShape) {
+          console.warn("Please select a shape before using a modeling command.");
+          setIsGenerating(false);
+          return;
+        }
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Parse the following command for a 3D modeling operation. Respond in JSON using the schema. The user wants to modify the selected shape. Command: '${command}'`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: modelingSchema,
+            }
+        });
+
+        const jsonStr = response.text.trim();
+        const modData = JSON.parse(jsonStr);
+
+        if (modData.action === 'extrude' || modData.action === 'presspull') {
+            const { height = 50 } = modData;
+            let newShapes: Shape[] = [];
+
+            if (selectedShape.type === Tool.RECTANGLE) {
+                const rect = selectedShape as RectangleShape;
+                const angle = -30; // Isometric angle
+                const rad = angle * (Math.PI / 180);
+                const dx = height * Math.cos(rad);
+                const dy = height * Math.sin(rad);
+
+                const p1 = { x: rect.x, y: rect.y };
+                const p2 = { x: rect.x + rect.width, y: rect.y };
+                const p3 = { x: rect.x + rect.width, y: rect.y + rect.height };
+                const p4 = { x: rect.x, y: rect.y + rect.height };
+
+                const p1_ = { x: p1.x + dx, y: p1.y + dy };
+                const p2_ = { x: p2.x + dx, y: p2.y + dy };
+                const p3_ = { x: p3.x + dx, y: p3.y + dy };
+                const p4_ = { x: p4.x + dx, y: p4.y + dy };
+                
+                const commonProps = {
+                    layerId: selectedShape.layerId,
+                    color: '#FFFFFF',
+                    strokeWidth: selectedShape.strokeWidth,
+                    rotation: 0,
+                };
+
+                const frontFace: PolylineShape = { ...commonProps, id: `shape_${Date.now()}_f`, type: Tool.POLYLINE, points: [p1, p2, p3, p4, p1] };
+                const backFace: PolylineShape = { ...commonProps, id: `shape_${Date.now()}_b`, type: Tool.POLYLINE, points: [p1_, p2_, p3_, p4_, p1_] };
+                const line1: LineShape = { ...commonProps, id: `shape_${Date.now()}_l1`, type: Tool.LINE, p1, p2: p1_ };
+                const line2: LineShape = { ...commonProps, id: `shape_${Date.now()}_l2`, type: Tool.LINE, p1: p2, p2: p2_ };
+                const line3: LineShape = { ...commonProps, id: `shape_${Date.now()}_l3`, type: Tool.LINE, p1: p3, p2: p3_ };
+                const line4: LineShape = { ...commonProps, id: `shape_${Date.now()}_l4`, type: Tool.LINE, p1: p4, p2: p4_ };
+
+                newShapes.push(frontFace, backFace, line1, line2, line3, line4);
+                setShapesAndHistory([...shapes.filter(s => s.id !== selectedShapeId), ...newShapes]);
+
+            } else {
+                console.warn("Extrusion is currently only supported for rectangles.");
+            }
+        }
       } else {
         const response = await ai.models.generateImages({
           model: 'imagen-4.0-generate-001',
@@ -283,7 +505,7 @@ const App: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [addShape, activeLayerId, shapes, selectedShapeId, deleteShape, updateShape]);
+  }, [addShape, activeLayerId, shapes, selectedShapeId, deleteShape, updateShape, history, historyIndex, handleZooAiGenerate]);
   
   const selectedShape = shapes.find(shape => shape.id === selectedShapeId) || null;
   const activeLayer = layers.find(l => l.id === activeLayerId) || defaultLayer;
@@ -298,6 +520,7 @@ const App: React.FC = () => {
         canUndo={canUndo}
         canRedo={canRedo}
         setMobilePanel={setMobilePanel}
+        onToggleZooAiPanel={() => setIsZooAiPanelOpen(true)}
       />
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 relative bg-gray-900">
@@ -358,6 +581,12 @@ const App: React.FC = () => {
         setSnapEnabled={setSnapEnabled}
         orthoEnabled={orthoEnabled}
         setOrthoEnabled={setOrthoEnabled}
+      />
+      <ZooAiPanel 
+        isOpen={isZooAiPanelOpen}
+        onClose={() => setIsZooAiPanelOpen(false)}
+        onGenerate={handleZooAiGenerate}
+        isGenerating={isGenerating}
       />
     </div>
   );

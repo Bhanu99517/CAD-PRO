@@ -23,6 +23,9 @@ import { TableIcon } from './icons/TableIcon';
 import { LayersIcon } from './icons/LayersIcon';
 import { EraseIcon } from './icons/EraseIcon';
 import { SlidersIcon } from './icons/SlidersIcon';
+import { ExtrudeIcon } from './icons/ExtrudeIcon';
+import { PresspullIcon } from './icons/PresspullIcon';
+import { ZooAiIcon } from './icons/ZooAiIcon';
 
 const UndoIcon: React.FC<{ className: string }> = ({ className }) => (
   <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -47,6 +50,7 @@ interface HeaderProps {
   canUndo: boolean;
   canRedo: boolean;
   setMobilePanel: (panel: 'PROPERTIES' | 'LAYERS' | null) => void;
+  onToggleZooAiPanel: () => void;
 }
 
 const ToolButton: React.FC<{
@@ -108,7 +112,11 @@ const complexToolAlert = (toolName: string) => {
     alert(`${toolName} functionality is not yet implemented through interactive controls. Please use the command line. For example: "create a 3x4 array of the selected object with 50px spacing"`);
 };
 
-const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo, setMobilePanel }) => {
+const modelingToolAlert = (toolName: string) => {
+    alert(`${toolName} functionality is available via the command line. Please select a shape and try a command like: "extrude selected shape by 50"`);
+};
+
+const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo, setMobilePanel, onToggleZooAiPanel }) => {
   return (
     <header className="bg-gray-800 border-b border-gray-700 flex flex-col shrink-0">
         <div className="flex items-center px-2 md:px-4 h-10 md:h-8">
@@ -157,6 +165,13 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                     <ToolButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
                 </div>
             </ToolGroup>
+            
+            <ToolGroup title="Modeling">
+                <div className="flex items-start">
+                    <ToolButton Icon={ExtrudeIcon} label="Extrude" onClick={() => modelingToolAlert('Extrude')} isActive={false} />
+                    <ToolButton Icon={PresspullIcon} label="Presspull" onClick={() => modelingToolAlert('Presspull')} isActive={false} />
+                </div>
+            </ToolGroup>
 
              <ToolGroup title="Annotation">
                 <div className="flex items-start">
@@ -177,6 +192,12 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                 </div>
             </ToolGroup>
             
+            <ToolGroup title="AI Studio">
+                <div className="flex items-start">
+                    <ToolButton Icon={ZooAiIcon} label="Zoo AI" onClick={onToggleZooAiPanel} isActive={false} large />
+                </div>
+            </ToolGroup>
+
              <div className="flex-grow"></div>
 
              <ToolGroup title="History">
@@ -211,6 +232,8 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                 <ToolButton Icon={ScaleIcon} label="Scale" isActive={activeTool === Tool.SCALE} onClick={() => setActiveTool(Tool.SCALE)} />
                 <ToolButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
                 <ToolButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
+                <div className="border-l border-gray-700 mx-1"></div>
+                 <ToolButton Icon={ZooAiIcon} label="Zoo AI" onClick={onToggleZooAiPanel} isActive={false} />
                 <div className="border-l border-gray-700 mx-1"></div>
                 <ToolButton Icon={UndoIcon} label="Undo" isActive={false} onClick={undo} disabled={!canUndo} />
                 <ToolButton Icon={RedoIcon} label="Redo" isActive={false} onClick={redo} disabled={!canRedo} />
