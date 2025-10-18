@@ -59,6 +59,8 @@ export interface RectangleShape extends ShapeBase {
   y: number;
   width: number;
   height: number;
+  rx?: number;
+  ry?: number;
 }
 
 export interface CircleShape extends ShapeBase {
@@ -91,4 +93,12 @@ export interface ArcShape extends ShapeBase {
   endAngle: number;
 }
 
-export type Shape = LineShape | RectangleShape | CircleShape | PolylineShape | ImageShape | ArcShape;
+export interface TextShape extends ShapeBase {
+  type: Tool.TEXT;
+  x: number;
+  y: number;
+  content: string;
+  fontSize: number;
+}
+
+export type Shape = LineShape | RectangleShape | CircleShape | PolylineShape | ImageShape | ArcShape | TextShape;

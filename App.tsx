@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
-import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape } from './types';
+import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape, TextShape } from './types';
 import Header from './components/Header';
 import Canvas from './components/Canvas';
 import PropertiesPanel from './components/PropertiesPanel';
@@ -15,22 +15,24 @@ const shapeCreationSchema = {
     properties: {
         shapeType: { 
             type: Type.STRING, 
-            description: 'The type of shape to draw. Must be one of: "circle", "rectangle", "line", "arc".',
-            enum: ['circle', 'rectangle', 'line', 'arc']
+            description: 'The type of shape to draw. Must be one of: "circle", "rectangle", "line", "arc", "text".',
+            enum: ['circle', 'rectangle', 'line', 'arc', 'text']
         },
         cx: { type: Type.NUMBER, description: "The x-coordinate of the circle's or arc's center." },
         cy: { type: Type.NUMBER, description: "The y-coordinate of the circle's or arc's center." },
         radius: { type: Type.NUMBER, description: 'The radius of the circle or arc. If diameter is provided in the prompt, convert it to radius.' },
         startAngle: { type: Type.NUMBER, description: "The start angle for an arc, in degrees." },
         endAngle: { type: Type.NUMBER, description: "The end angle for an arc, in degrees." },
-        x: { type: Type.NUMBER, description: "The x-coordinate of the rectangle's top-left corner." },
-        y: { type: Type.NUMBER, description: "The y-coordinate of the rectangle's top-left corner." },
+        x: { type: Type.NUMBER, description: "The x-coordinate of the rectangle's or text's top-left corner." },
+        y: { type: Type.NUMBER, description: "The y-coordinate of the rectangle's or text's top-left corner." },
         width: { type: Type.NUMBER, description: "The width of the rectangle." },
         height: { type: Type.NUMBER, description: "The height of the rectangle." },
         x1: { type: Type.NUMBER, description: "The x-coordinate of the line's start point." },
         y1: { type: Type.NUMBER, description: "The y-coordinate of the line's start point." },
         x2: { type: Type.NUMBER, description: "The x-coordinate of the line's end point." },
         y2: { type: Type.NUMBER, description: "The y-coordinate of the line's end point." },
+        content: { type: Type.STRING, description: "The text content for a text shape." },
+        fontSize: { type: Type.NUMBER, description: "The font size for a text shape. Default is 16." },
     },
     required: ['shapeType']
 };
@@ -379,6 +381,11 @@ const App: React.FC = () => {
                     newShape = { ...commonProps, type: Tool.ARC, cx: shapeData.cx ?? 100, cy: shapeData.cy ?? 100, r: shapeData.radius, startAngle: shapeData.startAngle, endAngle: shapeData.endAngle } as ArcShape;
                 }
                 break;
+            case 'text':
+                if (shapeData.content) {
+                    newShape = { ...commonProps, type: Tool.TEXT, x: shapeData.x ?? 100, y: shapeData.y ?? 100, content: shapeData.content, fontSize: shapeData.fontSize ?? 16, strokeWidth: 0 } as TextShape;
+                }
+                break;
         }
 
         if (newShape) {
@@ -419,6 +426,7 @@ const App: React.FC = () => {
                     case Tool.RECTANGLE: case Tool.IMAGE: (updatedShape as RectangleShape | ImageShape).x += dx; (updatedShape as RectangleShape | ImageShape).y += dy; break;
                     case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).cx += dx; (updatedShape as CircleShape | ArcShape).cy += dy; break;
                     case Tool.POLYLINE: (updatedShape as PolylineShape).points = (updatedShape as PolylineShape).points.map((p: Point) => ({ x: p.x + dx, y: p.y + dy })); break;
+                    case Tool.TEXT: (updatedShape as TextShape).x += dx; (updatedShape as TextShape).y += dy; break;
                 }
                 break;
             case 'rotate':
@@ -434,6 +442,7 @@ const App: React.FC = () => {
                     case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).r *= scaleFactor; break;
                     case Tool.LINE: const line = updatedShape as LineShape; const p1Vec = { x: line.p1.x - center.x, y: line.p1.y - center.y }; const p2Vec = { x: line.p2.x - center.x, y: line.p2.y - center.y }; line.p1 = { x: center.x + p1Vec.x * scaleFactor, y: center.y + p1Vec.y * scaleFactor }; line.p2 = { x: center.x + p2Vec.x * scaleFactor, y: center.y + p2Vec.y * scaleFactor }; break;
                     case Tool.POLYLINE: const poly = updatedShape as PolylineShape; poly.points = poly.points.map((p: Point) => { const vec = { x: p.x - center.x, y: p.y - center.y }; return { x: center.x + vec.x * scaleFactor, y: center.y + vec.y * scaleFactor }; }); break;
+                    case Tool.TEXT: (updatedShape as TextShape).fontSize *= scaleFactor; break;
                 }
                 break;
         }

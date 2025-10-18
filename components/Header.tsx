@@ -197,7 +197,7 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                     <ToolButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
                     <ToolButton Icon={ScaleIcon} label="Scale" isActive={activeTool === Tool.SCALE} onClick={() => setActiveTool(Tool.SCALE)} />
                     <ToolButton Icon={TrimIcon} label="Trim" onClick={() => complexToolAlert('Trim')} isActive={false} />
-                    <ToolButton Icon={FilletIcon} label="Fillet" onClick={() => complexToolAlert('Fillet')} isActive={false} />
+                    <ToolButton Icon={FilletIcon} label="Fillet" isActive={activeTool === Tool.FILLET} onClick={() => setActiveTool(Tool.FILLET)} />
                     <ToolButton Icon={ArrayIcon} label="Array" onClick={() => complexToolAlert('Array')} isActive={false} />
                     <ToolButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
                 </div>
@@ -210,7 +210,7 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
              <ToolGroup title="Annotation">
                 <div className="flex items-start">
                     <div className="flex flex-col items-center">
-                        <ToolButton Icon={TextIcon} label="Text" onClick={() => complexToolAlert('Text')} isActive={false} large />
+                        <ToolButton Icon={TextIcon} label="Text" isActive={activeTool === Tool.TEXT} onClick={() => setActiveTool(Tool.TEXT)} large />
                     </div>
                     <div className="flex flex-col space-y-1 ml-1">
                         <SmallToolButton Icon={DimensionIcon} label="Dimension" onClick={() => complexToolAlert('Dimension')} />

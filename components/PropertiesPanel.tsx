@@ -1,5 +1,5 @@
 import React, { ChangeEvent, useCallback } from 'react';
-import { Shape, Tool, Layer } from '../types';
+import { Shape, Tool, Layer, RectangleShape, TextShape } from '../types';
 
 interface PropertiesPanelProps {
   selectedShape: Shape | null;
@@ -30,9 +30,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShape, update
   const handlePropertyChange = useCallback((prop: string, value: string | number) => {
     if (!selectedShape) return;
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(numValue) && typeof(value) !== 'string' && prop !== 'layerId') return;
+    if (isNaN(numValue) && typeof(value) !== 'string' && prop !== 'layerId' && prop !== 'content') return;
     
-    updateShape({ ...selectedShape, [prop]: (prop === 'color' || prop === 'layerId') ? value : numValue });
+    updateShape({ ...selectedShape, [prop]: (prop === 'color' || prop === 'layerId' || prop === 'content') ? value : numValue });
   }, [selectedShape, updateShape]);
   
   const handlePointChange = (pointKey: 'p1' | 'p2', coord: 'x' | 'y', value: string) => {
@@ -84,6 +84,12 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShape, update
             <PropertyInput label="Y" type="number" value={selectedShape.y} onChange={(e) => handlePropertyChange('y', e.target.value)} />
             <PropertyInput label="Width" type="number" min={0} value={selectedShape.width} onChange={(e) => handlePropertyChange('width', e.target.value)} />
             <PropertyInput label="Height" type="number" min={0} value={selectedShape.height} onChange={(e) => handlePropertyChange('height', e.target.value)} />
+            {selectedShape.type === Tool.RECTANGLE &&
+                <PropertyInput label="Corner Radius" type="number" min={0} value={(selectedShape as RectangleShape).rx || 0} onChange={(e) => {
+                    handlePropertyChange('rx', e.target.value);
+                    handlePropertyChange('ry', e.target.value);
+                }} />
+            }
         </>;
       case Tool.CIRCLE:
         return <>
@@ -105,6 +111,21 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShape, update
           return <>
             {commonProps}
             <p className="text-xs text-gray-500 text-center mt-2">Polyline point editing not yet available.</p>
+          </>
+      case Tool.TEXT:
+          const textShape = selectedShape as TextShape;
+          return <>
+            {commonProps}
+            <div className="flex items-center justify-between">
+                <label className="text-sm text-gray-400">Content</label>
+                <input
+                    type="text"
+                    value={textShape.content}
+                    onChange={(e) => handlePropertyChange('content', e.target.value)}
+                    className="w-28 bg-gray-700 text-white rounded px-2 py-1 text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+            </div>
+            <PropertyInput label="Font Size" type="number" min={1} value={textShape.fontSize} onChange={(e) => handlePropertyChange('fontSize', e.target.value)} />
           </>
       default:
         return null;

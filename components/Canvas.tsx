@@ -1,5 +1,5 @@
 import React, { useState, useRef, MouseEvent, useEffect } from 'react';
-import { Tool, Shape, Point, LineShape, RectangleShape, CircleShape, PolylineShape, Layer, ImageShape, ArcShape } from '../types';
+import { Tool, Shape, Point, LineShape, RectangleShape, CircleShape, PolylineShape, Layer, ImageShape, ArcShape, TextShape } from '../types';
 import { getShapeCenter } from '../utils';
 
 interface CanvasProps {
@@ -187,6 +187,7 @@ const Canvas: React.FC<CanvasProps> = ({
       case Tool.ROTATE:
       case Tool.COPY:
       case Tool.MIRROR:
+      case Tool.FILLET:
         return 'pointer';
       default: return 'crosshair';
     }
@@ -231,14 +232,20 @@ const Canvas: React.FC<CanvasProps> = ({
         case Tool.LINE:
           checkPoint(shape.p1);
           checkPoint(shape.p2);
+          checkPoint({ x: (shape.p1.x + shape.p2.x) / 2, y: (shape.p1.y + shape.p2.y) / 2 }); // Midpoint
           break;
         case Tool.RECTANGLE:
         case Tool.IMAGE:
           const r = shape as RectangleShape | ImageShape;
-          checkPoint({ x: r.x, y: r.y });
-          checkPoint({ x: r.x + r.width, y: r.y });
-          checkPoint({ x: r.x, y: r.y + r.height });
-          checkPoint({ x: r.x + r.width, y: r.y + r.height });
+          const p1 = { x: r.x, y: r.y };
+          const p2 = { x: r.x + r.width, y: r.y };
+          const p3 = { x: r.x + r.width, y: r.y + r.height };
+          const p4 = { x: r.x, y: r.y + r.height };
+          checkPoint(p1); checkPoint(p2); checkPoint(p3); checkPoint(p4);
+          checkPoint({ x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }); // Top mid
+          checkPoint({ x: (p2.x + p3.x) / 2, y: (p2.y + p3.y) / 2 }); // Right mid
+          checkPoint({ x: (p3.x + p4.x) / 2, y: (p3.y + p4.y) / 2 }); // Bottom mid
+          checkPoint({ x: (p4.x + p1.x) / 2, y: (p4.y + p1.y) / 2 }); // Left mid
           break;
         case Tool.CIRCLE:
           checkPoint({ x: shape.cx, y: shape.cy });
@@ -250,6 +257,11 @@ const Canvas: React.FC<CanvasProps> = ({
           break;
         case Tool.POLYLINE:
           shape.points.forEach(checkPoint);
+          for (let i = 0; i < shape.points.length - 1; i++) {
+              const pA = shape.points[i];
+              const pB = shape.points[i+1];
+              checkPoint({ x: (pA.x + pB.x) / 2, y: (pA.y + pB.y) / 2 }); // Segment midpoints
+          }
           break;
       }
     });
@@ -305,9 +317,51 @@ const Canvas: React.FC<CanvasProps> = ({
     const { snappedPoint } = getSnapPoint(pos);
     pos = snappedPoint;
     
+    if (activeTool === Tool.FILLET) {
+        if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
+            const targetId = (e.target as SVGElement).id;
+            const shapeToFillet = shapes.find(s => s.id === targetId);
+            if (shapeToFillet && shapeToFillet.type === Tool.RECTANGLE) {
+                const radiusStr = prompt("Enter fillet radius:", `${(shapeToFillet as RectangleShape).rx || 10}`);
+                if (radiusStr) {
+                    const radius = parseFloat(radiusStr);
+                    if (!isNaN(radius) && radius >= 0) {
+                        const maxRadius = Math.min(shapeToFillet.width, shapeToFillet.height) / 2;
+                        const finalRadius = Math.min(radius, maxRadius);
+                        updateShape({ ...shapeToFillet, rx: finalRadius, ry: finalRadius });
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    if (activeTool === Tool.TEXT) {
+        const content = prompt("Enter text:");
+        if (content) {
+            const fontSizeStr = prompt("Enter font size:", "16");
+            const fontSize = fontSizeStr ? parseInt(fontSizeStr, 10) : 16;
+            if (!isNaN(fontSize) && fontSize > 0) {
+                const newShape: TextShape = {
+                    id: `shape_${Date.now()}`,
+                    type: Tool.TEXT,
+                    x: pos.x,
+                    y: pos.y,
+                    content,
+                    fontSize,
+                    layerId: activeLayer.id,
+                    color: activeLayer.color,
+                    strokeWidth: 0,
+                    rotation: 0,
+                };
+                addShape(newShape);
+            }
+        }
+        return;
+    }
+
     if (activeTool === Tool.EXTRUDE) {
         if (!isExtruding) {
-            // FIX: Cast e.target to SVGElement to access id property safely.
             if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
                 const targetId = (e.target as SVGElement).id;
                 const selected = shapes.find(s => s.id === targetId);
@@ -334,7 +388,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
 
     if (activeTool === Tool.PRESS_PULL) {
-        // FIX: Cast e.target to SVGElement to access id property safely.
         if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
             const targetId = (e.target as SVGElement).id;
             const selected = shapes.find(s => s.id === targetId);
@@ -362,7 +415,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
 
     if (activeTool === Tool.ERASE) {
-        // FIX: Cast e.target to SVGElement to access id property safely.
         if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
             deleteShape((e.target as SVGElement).id);
         }
@@ -384,7 +436,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
 
     if (activeTool === Tool.SCALE) {
-        // FIX: Cast e.target to SVGElement to access id property safely.
         if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
             const targetId = (e.target as SVGElement).id;
             setSelectedShapeId(targetId);
@@ -401,7 +452,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
 
     if (activeTool === Tool.ROTATE) {
-        // FIX: Cast e.target to SVGElement to access id property safely.
         if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
             const targetId = (e.target as SVGElement).id;
             setSelectedShapeId(targetId);
@@ -416,7 +466,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
     
     if (activeTool === Tool.COPY) {
-        // FIX: Cast e.target to SVGElement to access id property safely.
         if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
             const targetId = (e.target as SVGElement).id;
             const shapeToCopy = shapes.find(s => s.id === targetId);
@@ -485,7 +534,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
     
     if (activeTool === Tool.SELECT) {
-      // FIX: Cast e.target to SVGElement to access id property safely.
       if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
         setSelectedShapeId((e.target as SVGElement).id);
       } else {
@@ -537,7 +585,7 @@ const Canvas: React.FC<CanvasProps> = ({
         case Tool.LINE:
             return { p1: pos, p2: pos };
         case Tool.RECTANGLE:
-            return { x: pos.x, y: pos.y, width: 0, height: 0 };
+            return { x: pos.x, y: pos.y, width: 0, height: 0, rx: 0, ry: 0 };
         case Tool.CIRCLE:
             return { cx: pos.x, cy: pos.y, r: 0 };
         case Tool.ARC:
@@ -982,7 +1030,7 @@ const Canvas: React.FC<CanvasProps> = ({
     const color = layer ? layer.color : '#FFFFFF';
     const center = getShapeCenter(shape);
 
-    const props = {
+    const props: any = {
       key: shape.id,
       id: shape.id,
       stroke: isSelected ? '#3b82f6' : color,
@@ -997,7 +1045,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return <line x1={line.p1.x} y1={line.p1.y} x2={line.p2.x} y2={line.p2.y} {...props} />;
       case Tool.RECTANGLE:
         const rect = shape as RectangleShape;
-        return <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} {...props} />;
+        return <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx={rect.rx} ry={rect.ry} {...props} />;
       case Tool.CIRCLE:
         const circle = shape as CircleShape;
         return <circle cx={circle.cx} cy={circle.cy} r={circle.r} {...props} />;
@@ -1035,6 +1083,18 @@ const Canvas: React.FC<CanvasProps> = ({
                 />
             </g>
         );
+      }
+      case Tool.TEXT: {
+        const text = shape as TextShape;
+        // Override some props for text
+        const textProps = {
+            ...props,
+            stroke: 'none',
+            fill: isSelected ? '#3b82f6' : color,
+            fontSize: text.fontSize,
+            dominantBaseline: "hanging",
+        };
+        return <text x={text.x} y={text.y} {...textProps}>{text.content}</text>;
       }
       default:
         return null;

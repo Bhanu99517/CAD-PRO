@@ -1,4 +1,4 @@
-import { Shape, Tool, RectangleShape, ImageShape, CircleShape, ArcShape, Point, LineShape, PolylineShape } from './types';
+import { Shape, Tool, RectangleShape, ImageShape, CircleShape, ArcShape, Point, LineShape, PolylineShape, TextShape } from './types';
 
 export const getShapeCenter = (shape: Shape): Point => {
     switch (shape.type) {
@@ -21,6 +21,10 @@ export const getShapeCenter = (shape: Shape): Point => {
             const minY = Math.min(...ys);
             const maxY = Math.max(...ys);
             return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+        case Tool.TEXT:
+            const text = shape as TextShape;
+            // Use the insertion point as the center for rotation/scaling transforms
+            return { x: text.x, y: text.y };
         default:
             return { x: 0, y: 0 };
     }
