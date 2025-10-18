@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape, TextShape } from './types';
@@ -37,13 +38,25 @@ const shapeCreationSchema = {
     required: ['shapeType']
 };
 
+const multipleShapeCreationSchema = {
+    type: Type.OBJECT,
+    properties: {
+        shapes: {
+            type: Type.ARRAY,
+            description: "An array of shapes to be drawn.",
+            items: shapeCreationSchema
+        }
+    },
+    required: ['shapes']
+};
+
 const shapeModificationSchema = {
     type: Type.OBJECT,
     properties: {
         action: {
             type: Type.STRING,
-            description: 'The modification to perform. Must be one of: "move", "rotate", "scale", "delete".',
-            enum: ['move', 'rotate', 'scale', 'delete']
+            description: 'The modification to perform. Must be one of: "move", "rotate", "scale".',
+            enum: ['move', 'rotate', 'scale']
         },
         target: {
             type: Type.STRING,
@@ -57,6 +70,29 @@ const shapeModificationSchema = {
     },
     required: ['action', 'target']
 };
+
+const eraseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        target: {
+            type: Type.STRING,
+            description: "The type of shape to erase. Can be 'circle', 'rectangle', 'line', 'arc', 'text', 'polyline', 'image', 'shape' (for any type), or 'all'.",
+            enum: ['circle', 'rectangle', 'line', 'arc', 'text', 'polyline', 'image', 'shape', 'all']
+        },
+        selector: {
+            type: Type.STRING,
+            description: "Which specific object to select if there are multiple. Can be 'last' (the most recently drawn), or 'all' of the specified type.",
+            enum: ['last', 'all']
+        },
+        position: {
+            type: Type.STRING,
+            description: "A spatial descriptor. Can be 'left', 'right', 'top', 'bottom'.",
+            enum: ['left', 'right', 'top', 'bottom']
+        }
+    },
+    required: ['target']
+};
+
 
 const modelingSchema = {
     type: Type.OBJECT,
@@ -313,9 +349,12 @@ const App: React.FC = () => {
     
     const commandLower = command.toLowerCase();
     const drawKeywords = ['draw', 'make', 'create', 'add'];
-    const modifyKeywords = ['move', 'rotate', 'scale', 'delete', 'remove', 'change', 'modify', 'resize', 'spin'];
+    const eraseKeywords = ['erase', 'delete', 'remove', 'clear'];
+    const modifyKeywords = ['move', 'rotate', 'scale', 'change', 'modify', 'resize', 'spin'];
     const modelingKeywords = ['extrude', 'presspull'];
     const modelGenKeywords = ['model', 'build', 'design', 'generate a model of'];
+    const alphabetKeywords = ['write the alphabet', 'draw the alphabet'];
+    const threeDTextKeywords = ['3d text', '3d font', 'extrude text', 'three-dimensional text'];
     const zooAiKeyword = 'zoo ai';
     
     if (commandLower.startsWith(zooAiKeyword)) {
@@ -324,19 +363,88 @@ const App: React.FC = () => {
     }
 
     const isDrawCommand = drawKeywords.some(kw => commandLower.startsWith(kw));
+    const isEraseCommand = eraseKeywords.some(kw => commandLower.startsWith(kw));
     const isModifyCommand = modifyKeywords.some(kw => commandLower.includes(kw));
     const isModelingCommand = modelingKeywords.some(kw => commandLower.includes(kw));
     const isModelGenCommand = modelGenKeywords.some(kw => commandLower.startsWith(kw));
+    const isAlphabetCommand = alphabetKeywords.some(kw => commandLower.startsWith(kw));
+    const is3DTextCommand = threeDTextKeywords.some(kw => commandLower.includes(kw));
 
     if (isModelGenCommand) {
         handleZooAiGenerate(command);
         return;
     }
-
-
+    
     setIsGenerating(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+
+      if (is3DTextCommand) {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: `Generate a 2D model representing 3D text in an isometric view based on the user's request. Decompose each letter into a set of 2D shapes (lines, and closed polylines for faces). The model should fit within a 400x400 area centered at (300, 300). User Request: '${command}'. Respond in JSON format according to the provided schema.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: modelGenerationSchema,
+            }
+        });
+
+        const jsonStr = response.text.trim();
+        const modelData = JSON.parse(jsonStr);
+
+        if (modelData.modelParts && Array.isArray(modelData.modelParts)) {
+            const newShapes: Shape[] = modelData.modelParts.map((part: any) => {
+                const commonProps = {
+                    id: `shape_${Date.now()}_${Math.random()}`, layerId: activeLayerId,
+                    color: '#FFFFFF', strokeWidth: 2, rotation: 0,
+                };
+                switch (part.shapeType) {
+                    case 'line': return { ...commonProps, type: Tool.LINE, p1: { x: part.x1, y: part.y1 }, p2: { x: part.x2, y: part.y2 } } as LineShape;
+                    case 'polyline': return { ...commonProps, type: Tool.POLYLINE, points: part.points } as PolylineShape;
+                    default: return null;
+                }
+            }).filter(Boolean);
+
+            if (newShapes.length > 0) {
+                setShapesAndHistory([...shapes, ...newShapes]);
+            }
+        }
+        setIsGenerating(false);
+        return;
+      }
+
+      if (isAlphabetCommand) {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Parse the following command to generate an array of text shapes for the English alphabet (A-Z). Lay them out in a grid starting near (50, 50). Respond in JSON format according to the schema. Command: '${command}'`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: multipleShapeCreationSchema,
+            }
+        });
+
+        const jsonStr = response.text.trim();
+        const multiShapeData = JSON.parse(jsonStr);
+
+        if (multiShapeData.shapes && Array.isArray(multiShapeData.shapes)) {
+            const newShapes: Shape[] = multiShapeData.shapes.map((shapeData: any): Shape | null => {
+                 const commonProps = {
+                    id: `shape_${Date.now()}_${Math.random()}`, layerId: activeLayerId,
+                    color: '#FFFFFF', strokeWidth: 0, rotation: 0,
+                };
+                if (shapeData.shapeType === 'text' && shapeData.content) {
+                    return { ...commonProps, type: Tool.TEXT, x: shapeData.x ?? 100, y: shapeData.y ?? 100, content: shapeData.content, fontSize: shapeData.fontSize ?? 16 } as TextShape;
+                }
+                return null;
+            }).filter((s): s is Shape => s !== null);
+            
+            if (newShapes.length > 0) {
+                setShapesAndHistory([...shapes, ...newShapes]);
+            }
+        }
+        setIsGenerating(false);
+        return;
+      }
       
       if (isDrawCommand) {
         const response = await ai.models.generateContent({
@@ -393,6 +501,79 @@ const App: React.FC = () => {
         } else {
             console.warn("Could not create a valid shape from the command.", shapeData);
         }
+      } else if (isEraseCommand) {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Parse the user's erase command. Identify the target shape type. This can be 'circle', 'rectangle', 'line', etc., or 'shape' for any type, or 'all' to clear everything. Also identify a positional descriptor if present ('left', 'right', 'top', 'bottom'). Also identify a selector like 'last' or 'all' (of a type). If the user says something like 'erase circle' and there are multiple circles, the selector should be 'last'. If no selector or position is specified, you can omit them from the response. Command: '${command}'`,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: eraseSchema,
+            }
+          });
+
+        const jsonStr = response.text.trim();
+        const eraseData = JSON.parse(jsonStr);
+
+        if (eraseData.target === 'all') {
+            setShapesAndHistory([]);
+            setIsGenerating(false);
+            return;
+        }
+
+        let candidates = [...shapes];
+
+        // 1. Filter by type
+        if (eraseData.target && eraseData.target !== 'shape') {
+            const toolMap: { [key: string]: Tool } = {
+                'line': Tool.LINE, 'rectangle': Tool.RECTANGLE, 'circle': Tool.CIRCLE,
+                'arc': Tool.ARC, 'polyline': Tool.POLYLINE, 'image': Tool.IMAGE, 'text': Tool.TEXT,
+            };
+            const targetTool = toolMap[eraseData.target];
+            if (targetTool) {
+                candidates = candidates.filter(s => s.type === targetTool);
+            }
+        }
+
+        // 2. Filter by position
+        if (eraseData.position && candidates.length > 1) {
+            const centers = candidates.map(s => getShapeCenter(s));
+            const avgX = centers.reduce((sum, c) => sum + c.x, 0) / centers.length;
+            const avgY = centers.reduce((sum, c) => sum + c.y, 0) / centers.length;
+
+            switch (eraseData.position) {
+                case 'left': candidates = candidates.filter(s => getShapeCenter(s).x < avgX); break;
+                case 'right': candidates = candidates.filter(s => getShapeCenter(s).x > avgX); break;
+                case 'top': candidates = candidates.filter(s => getShapeCenter(s).y < avgY); break;
+                case 'bottom': candidates = candidates.filter(s => getShapeCenter(s).y > avgY); break;
+            }
+        }
+        
+        if (candidates.length === 0) {
+            console.warn("No shapes matched the erase criteria.");
+            setIsGenerating(false);
+            return;
+        }
+
+        let shapesToDeleteIds = new Set<string>();
+
+        // 3. Apply selector
+        if (eraseData.selector === 'all') {
+            candidates.forEach(s => shapesToDeleteIds.add(s.id));
+        } else { // 'last' or default
+            const lastCandidate = candidates[candidates.length - 1];
+            if (lastCandidate) {
+                shapesToDeleteIds.add(lastCandidate.id);
+            }
+        }
+
+        if (shapesToDeleteIds.size > 0) {
+            const newShapes = shapes.filter(s => !shapesToDeleteIds.has(s.id));
+            setShapesAndHistory(newShapes);
+            if (selectedShapeId && shapesToDeleteIds.has(selectedShapeId)) {
+                setSelectedShapeId(null);
+            }
+        }
+
       } else if (isModifyCommand) {
         const selectedShape = shapes.find(s => s.id === selectedShapeId);
         if (!selectedShape) {
@@ -415,18 +596,13 @@ const App: React.FC = () => {
         let updatedShape = JSON.parse(JSON.stringify(selectedShape)) as Shape;
 
         switch (modData.action) {
-            case 'delete':
-                deleteShape(selectedShape.id);
-                setIsGenerating(false);
-                return;
             case 'move':
                 const { dx = 0, dy = 0 } = modData;
                 switch (updatedShape.type) {
                     case Tool.LINE: (updatedShape as LineShape).p1 = { x: (updatedShape as LineShape).p1.x + dx, y: (updatedShape as LineShape).p1.y + dy }; (updatedShape as LineShape).p2 = { x: (updatedShape as LineShape).p2.x + dx, y: (updatedShape as LineShape).p2.y + dy }; break;
-                    case Tool.RECTANGLE: case Tool.IMAGE: (updatedShape as RectangleShape | ImageShape).x += dx; (updatedShape as RectangleShape | ImageShape).y += dy; break;
+                    case Tool.RECTANGLE: case Tool.IMAGE: case Tool.TEXT: (updatedShape as RectangleShape | ImageShape | TextShape).x += dx; (updatedShape as RectangleShape | ImageShape | TextShape).y += dy; break;
                     case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).cx += dx; (updatedShape as CircleShape | ArcShape).cy += dy; break;
                     case Tool.POLYLINE: (updatedShape as PolylineShape).points = (updatedShape as PolylineShape).points.map((p: Point) => ({ x: p.x + dx, y: p.y + dy })); break;
-                    case Tool.TEXT: (updatedShape as TextShape).x += dx; (updatedShape as TextShape).y += dy; break;
                 }
                 break;
             case 'rotate':
@@ -530,7 +706,7 @@ const App: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [addShape, activeLayerId, shapes, selectedShapeId, deleteShape, updateShape, history, historyIndex, handleZooAiGenerate]);
+  }, [addShape, activeLayerId, shapes, selectedShapeId, deleteShape, updateShape, history, historyIndex, handleZooAiGenerate, setShapesAndHistory]);
   
   const selectedShape = shapes.find(shape => shape.id === selectedShapeId) || null;
   const activeLayer = layers.find(l => l.id === activeLayerId) || defaultLayer;
@@ -561,6 +737,7 @@ const App: React.FC = () => {
             activeLayer={activeLayer}
             layers={layers}
             setCoords={setCoords}
+            coords={coords}
             snapEnabled={snapEnabled}
             orthoEnabled={orthoEnabled}
             extrudeShape={extrudeShape}
