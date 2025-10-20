@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, MouseEvent, useEffect } from 'react';
 import { Tool, Shape, Point, LineShape, RectangleShape, CircleShape, PolylineShape, Layer, ImageShape, ArcShape, TextShape } from '../types';
-import { getShapeCenter } from '../utils';
+import { getShapeCenter, polarToCartesian, getShapeBoundingBox, doBBoxesIntersect } from '../utils';
 
 interface CanvasProps {
   activeTool: Tool;
@@ -33,14 +32,6 @@ const getMousePos = (svg: SVGSVGElement, e: MouseEvent): Point => {
     };
   }
   return { x: 0, y: 0 };
-};
-
-const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
-    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
-    return {
-        x: centerX + (radius * Math.cos(angleInRadians)),
-        y: centerY + (radius * Math.sin(angleInRadians))
-    };
 };
 
 const describeArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number): string => {
@@ -851,16 +842,38 @@ const Canvas: React.FC<CanvasProps> = ({
   const handleMouseUp = () => {
     if (marquee) {
         const { x1, y1, x2, y2 } = marquee;
-        const minX = Math.min(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxX = Math.max(x1, x2);
-        const maxY = Math.max(y1, y2);
-
-        const isShapeInMarquee = (shape: Shape) => {
-             const points = getShapePoints(shape);
-             return points.every(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
+        const marqueeBounds = {
+            minX: Math.min(x1, x2),
+            minY: Math.min(y1, y2),
+            maxX: Math.max(x1, x2),
+            maxY: Math.max(y1, y2),
         };
-        const idsInMarquee = shapes.filter(isShapeInMarquee).map(s => s.id);
+        
+        // isCrossing is true for right-to-left selection
+        const isCrossing = x2 < x1;
+
+        const isShapeInWindow = (shape: Shape): boolean => {
+            const bbox = getShapeBoundingBox(shape);
+            return (
+                bbox.minX >= marqueeBounds.minX &&
+                bbox.maxX <= marqueeBounds.maxX &&
+                bbox.minY >= marqueeBounds.minY &&
+                bbox.maxY <= marqueeBounds.maxY
+            );
+        };
+    
+        const isShapeCrossingWindow = (shape: Shape): boolean => {
+            const shapeBBox = getShapeBoundingBox(shape);
+            return doBBoxesIntersect(shapeBBox, marqueeBounds);
+        };
+    
+        const idsInMarquee = shapes
+            .filter(shape => {
+                const layer = layers.find(l => l.id === shape.layerId);
+                if (!layer || !layer.visible) return false;
+                return isCrossing ? isShapeCrossingWindow(shape) : isShapeInWindow(shape);
+            })
+            .map(s => s.id);
         
         setSelectedShapeIds(prev => {
             const newIds = new Set([...prev, ...idsInMarquee]);
@@ -1018,6 +1031,26 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const gridPatternId = zoomFactor > 5 ? 'grid-coarse' : zoomFactor > 0.5 ? 'grid-medium' : 'grid-fine';
 
+  const renderMarquee = () => {
+      if (!marquee) return null;
+      const isCrossing = marquee.x2 < marquee.x1;
+      const fill = isCrossing ? "rgba(44, 153, 56, 0.2)" : "rgba(59, 130, 246, 0.2)";
+      const stroke = isCrossing ? "#2c9938" : "#3b82f6";
+      const strokeDasharray = isCrossing ? "4" : undefined;
+      return (
+          <rect 
+              x={Math.min(marquee.x1, marquee.x2)} 
+              y={Math.min(marquee.y1, marquee.y2)} 
+              width={Math.abs(marquee.x1 - marquee.x2)} 
+              height={Math.abs(marquee.y1 - marquee.y2)} 
+              fill={fill} 
+              stroke={stroke} 
+              strokeWidth={1 * zoomFactor} 
+              strokeDasharray={strokeDasharray}
+          />
+      );
+  };
+
   return (
     <div className="h-full w-full bg-gray-900 cursor-crosshair" style={{ cursor: getCursor() }}>
       <svg
@@ -1040,7 +1073,7 @@ const Canvas: React.FC<CanvasProps> = ({
         
         {mirrorLineStart && mirrorLineEnd && <line x1={mirrorLineStart.x} y1={mirrorLineStart.y} x2={mirrorLineEnd.x} y2={mirrorLineEnd.y} stroke="#0ea5e9" strokeDasharray="5,5" strokeWidth={1 * zoomFactor} /> }
         {snapIndicator && <rect x={snapIndicator.x - 4 * zoomFactor} y={snapIndicator.y - 4 * zoomFactor} width={8 * zoomFactor} height={8 * zoomFactor} fill="none" stroke="#3b82f6" strokeWidth={1 * zoomFactor} />}
-        {marquee && <rect x={Math.min(marquee.x1, marquee.x2)} y={Math.min(marquee.y1, marquee.y2)} width={Math.abs(marquee.x1 - marquee.x2)} height={Math.abs(marquee.y1 - marquee.y2)} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={1 * zoomFactor} strokeDasharray="4" />}
+        {renderMarquee()}
       </svg>
       {drawingInfo && (
         <div className="absolute p-1 bg-gray-800 text-xs rounded-md pointer-events-none" style={{ left: (coords.x - viewBox.x) / viewBox.w * clientWidth + 20, top: (coords.y - viewBox.y) / viewBox.h * (svgRef.current?.clientHeight || 1) + 20 }}>
