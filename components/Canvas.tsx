@@ -1026,10 +1026,69 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
+  const getNiceGridSpacing = (onScreenSpacing: number, zoom: number): number => {
+    const worldSpacing = onScreenSpacing * zoom;
+    const powerOf10 = Math.pow(10, Math.floor(Math.log10(worldSpacing)));
+    const relativeSpacing = worldSpacing / powerOf10;
+
+    if (relativeSpacing < 1.5) return powerOf10;
+    if (relativeSpacing < 3.5) return 2 * powerOf10;
+    if (relativeSpacing < 7.5) return 5 * powerOf10;
+    return 10 * powerOf10;
+  };
+
+  const renderGrid = () => {
+    if (!gridVisible || !svgRef.current) return null;
+
+    const clientWidth = svgRef.current.clientWidth || 1;
+    const zoom = viewBox.w / clientWidth;
+
+    const minorSpacing = getNiceGridSpacing(20, zoom); // Target ~20px between minor lines
+    const majorSpacing = minorSpacing * 5;
+
+    const lines = [];
+
+    const minorStrokeWidth = 0.5 * zoom;
+    const majorStrokeWidth = 1 * zoom;
+    const minorStroke = 'rgba(107, 114, 128, 0.3)';
+    const majorStroke = 'rgba(107, 114, 128, 0.5)';
+
+    const { x, y, w, h } = viewBox;
+
+    const xStart = Math.floor(x / minorSpacing) * minorSpacing;
+    const xEnd = x + w;
+    for (let i = xStart; i <= xEnd; i += minorSpacing) {
+      // Use a tolerance for floating point modulo
+      const isMajor = Math.abs(i % majorSpacing) < 1e-9 || Math.abs(i % majorSpacing - majorSpacing) < 1e-9;
+      lines.push(
+        <line
+          key={`v${i}`}
+          x1={i} y1={y} x2={i} y2={y + h}
+          stroke={isMajor ? majorStroke : minorStroke}
+          strokeWidth={isMajor ? majorStrokeWidth : minorStrokeWidth}
+        />,
+      );
+    }
+
+    const yStart = Math.floor(y / minorSpacing) * minorSpacing;
+    const yEnd = y + h;
+    for (let i = yStart; i <= yEnd; i += minorSpacing) {
+      const isMajor = Math.abs(i % majorSpacing) < 1e-9 || Math.abs(i % majorSpacing - majorSpacing) < 1e-9;
+      lines.push(
+        <line
+          key={`h${i}`}
+          x1={x} y1={i} x2={x + w} y2={i}
+          stroke={isMajor ? majorStroke : minorStroke}
+          strokeWidth={isMajor ? majorStrokeWidth : minorStrokeWidth}
+        />,
+      );
+    }
+
+    return <g id="grid">{lines}</g>;
+  };
+
   const clientWidth = svgRef.current?.clientWidth || 1;
   const zoomFactor = viewBox.w / clientWidth;
-
-  const gridPatternId = zoomFactor > 5 ? 'grid-coarse' : zoomFactor > 0.5 ? 'grid-medium' : 'grid-fine';
 
   const renderMarquee = () => {
       if (!marquee) return null;
@@ -1058,12 +1117,7 @@ const Canvas: React.FC<CanvasProps> = ({
         onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
         onWheel={handleWheel} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       >
-        <defs>
-            <pattern id="grid-fine" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(107, 114, 128, 0.3)" strokeWidth={0.5 * zoomFactor}/></pattern>
-            <pattern id="grid-medium" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(107, 114, 128, 0.4)" strokeWidth={1 * zoomFactor}/></pattern>
-            <pattern id="grid-coarse" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(107, 114, 128, 0.5)" strokeWidth={1.5 * zoomFactor}/></pattern>
-        </defs>
-        {gridVisible && <rect width={viewBox.w} height={viewBox.h} x={viewBox.x} y={viewBox.y} fill={`url(#${gridPatternId})`} />}
+        {renderGrid()}
         
         {shapes.map(shape => renderShape(shape))}
         {currentShape && renderShape(currentShape)}
