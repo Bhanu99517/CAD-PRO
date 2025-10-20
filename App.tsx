@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape, TextShape } from './types';
 import Header from './components/Header';
@@ -171,20 +171,31 @@ const App: React.FC = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const shapes = history[historyIndex];
 
-  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([]);
   const [coords, setCoords] = useState<Point>({ x: 0, y: 0 });
   const [isGenerating, setIsGenerating] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState<boolean>(true);
   const [orthoEnabled, setOrthoEnabled] = useState<boolean>(false);
+  const [gridVisible, setGridVisible] = useState<boolean>(true);
 
-  const setShapesAndHistory = (newShapes: Shape[]) => {
-    const currentShapes = history[historyIndex];
-    if (JSON.stringify(newShapes) === JSON.stringify(currentShapes)) {
-        return;
-    }
-    const nextHistory = [...history.slice(0, historyIndex + 1), newShapes];
-    setHistory(nextHistory);
-    setHistoryIndex(nextHistory.length - 1);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: 1920, h: 1080 });
+
+  const setShapesAndHistory = (newShapes: Shape[], fromHistory = false) => {
+      const currentShapes = history[historyIndex];
+      if (JSON.stringify(newShapes) === JSON.stringify(currentShapes)) {
+          return;
+      }
+      if (fromHistory) {
+          // This path is for undo/redo where we just change the index
+          setHistory(newShapes as any); // a bit of a type hack for simplicity
+      } else {
+          // This path is for new actions
+          const nextHistory = [...history.slice(0, historyIndex + 1), newShapes];
+          setHistory(nextHistory);
+          setHistoryIndex(nextHistory.length - 1);
+      }
   };
   
   const addShape = (shape: Shape) => {
@@ -201,20 +212,17 @@ const App: React.FC = () => {
     setShapesAndHistory(newShapes);
   };
 
-  const deleteShape = (id: string) => {
-    setShapesAndHistory(shapes.filter(shape => shape.id !== id));
-    if (selectedShapeId === id) {
-      setSelectedShapeId(null);
-    }
+  const deleteShapes = (ids: string[]) => {
+      const idsToDelete = new Set(ids);
+      setShapesAndHistory(shapes.filter(shape => !idsToDelete.has(shape.id)));
+      setSelectedShapeIds(prev => prev.filter(id => !idsToDelete.has(id)));
   };
 
   const extrudeShape = (shapeId: string, newShapes: Shape[]) => {
       const currentShapes = history[historyIndex];
       const nextShapes = currentShapes.filter(s => s.id !== shapeId).concat(newShapes);
       setShapesAndHistory(nextShapes);
-      if (selectedShapeId === shapeId) {
-          setSelectedShapeId(null);
-      }
+      setSelectedShapeIds(prev => prev.filter(id => id !== shapeId));
       setActiveTool(Tool.SELECT);
   };
 
@@ -265,6 +273,112 @@ const App: React.FC = () => {
   const updateLayer = useCallback((updatedLayer: Layer) => {
     setLayers(prev => prev.map(l => l.id === updatedLayer.id ? updatedLayer : l));
   }, []);
+  
+  const handleSave = () => {
+      const drawingData = {
+          shapes: shapes,
+          layers: layers,
+          activeLayerId: activeLayerId,
+      };
+      const jsonString = JSON.stringify(drawingData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'smart-cad-drawing.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+  };
+
+  const handleLoadRequest = () => {
+      fileInputRef.current?.click();
+  };
+
+  const handleFileLoad = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const result = e.target?.result;
+              if (typeof result === 'string') {
+                  const data = JSON.parse(result);
+                  // Basic validation
+                  if (data && Array.isArray(data.shapes) && Array.isArray(data.layers)) {
+                      setLayers(data.layers);
+                      setActiveLayerId(data.activeLayerId || data.layers[0]?.id || defaultLayer.id);
+                      setShapesAndHistory([data.shapes]);
+                      setHistoryIndex(0);
+                      setSelectedShapeIds([]);
+                  } else {
+                      alert('Invalid or corrupted drawing file.');
+                  }
+              }
+          } catch (error) {
+              console.error('Error loading file:', error);
+              alert('Failed to read the drawing file.');
+          }
+      };
+      reader.readAsText(file);
+      // Reset input value to allow loading the same file again
+      if(event.target) event.target.value = '';
+  };
+  
+  const zoomExtents = useCallback(() => {
+    if (shapes.length === 0) {
+        setViewBox({ x: 0, y: 0, w: 1920, h: 1080 });
+        return;
+    }
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    shapes.forEach(shape => {
+        const getPoints = (s: Shape): Point[] => {
+            switch (s.type) {
+                case Tool.LINE: return [s.p1, s.p2];
+                case Tool.RECTANGLE: case Tool.IMAGE: return [{x: s.x, y: s.y}, {x: s.x + s.width, y: s.y + s.height}];
+                case Tool.CIRCLE: case Tool.ARC: return [{x: s.cx - s.r, y: s.cy - s.r}, {x: s.cx + s.r, y: s.cy + s.r}];
+                case Tool.POLYLINE: return s.points;
+                case Tool.TEXT: return [{x: s.x, y: s.y}, {x: s.x + s.content.length * s.fontSize * 0.6, y: s.y}];
+                default: return [];
+            }
+        };
+        getPoints(shape).forEach(p => {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+        });
+    });
+    
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const padding = Math.max(width, height) * 0.1; // 10% padding
+
+    const newW = width + padding * 2;
+    const newH = height + padding * 2;
+    
+    // Maintain aspect ratio
+    const aspectRatio = 1920 / 1080;
+    let finalW, finalH;
+    if (newW / newH > aspectRatio) {
+        finalW = newW;
+        finalH = newW / aspectRatio;
+    } else {
+        finalH = newH;
+        finalW = newH * aspectRatio;
+    }
+
+    setViewBox({
+        x: minX - (finalW - width) / 2,
+        y: minY - (finalH - height) / 2,
+        w: finalW,
+        h: finalH
+    });
+  }, [shapes]);
 
   const handleZooAiGenerate = useCallback(async (command: string) => {
     if (!command.trim()) return;
@@ -567,16 +681,12 @@ const App: React.FC = () => {
         }
 
         if (shapesToDeleteIds.size > 0) {
-            const newShapes = shapes.filter(s => !shapesToDeleteIds.has(s.id));
-            setShapesAndHistory(newShapes);
-            if (selectedShapeId && shapesToDeleteIds.has(selectedShapeId)) {
-                setSelectedShapeId(null);
-            }
+            deleteShapes(Array.from(shapesToDeleteIds));
         }
 
       } else if (isModifyCommand) {
-        const selectedShape = shapes.find(s => s.id === selectedShapeId);
-        if (!selectedShape) {
+        const selectedShapes = shapes.filter(s => selectedShapeIds.includes(s.id));
+        if (selectedShapes.length === 0) {
           console.warn("Please select a shape before using a modification command.");
           setIsGenerating(false);
           return;
@@ -584,7 +694,7 @@ const App: React.FC = () => {
 
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
-          contents: `Parse the following command to extract information for modifying a shape. Respond in JSON format according to the schema. The user wants to modify the currently selected shape. Command: '${command}'`,
+          contents: `Parse the following command to extract information for modifying a shape. Respond in JSON format according to the schema. The user wants to modify the currently selected shape(s). Command: '${command}'`,
           config: {
             responseMimeType: "application/json",
             responseSchema: shapeModificationSchema,
@@ -593,38 +703,43 @@ const App: React.FC = () => {
         
         const jsonStr = response.text.trim();
         const modData = JSON.parse(jsonStr);
-        let updatedShape = JSON.parse(JSON.stringify(selectedShape)) as Shape;
+        
+        const updatedShapes = selectedShapes.map(selectedShape => {
+            let updatedShape = JSON.parse(JSON.stringify(selectedShape)) as Shape;
 
-        switch (modData.action) {
-            case 'move':
-                const { dx = 0, dy = 0 } = modData;
-                switch (updatedShape.type) {
-                    case Tool.LINE: (updatedShape as LineShape).p1 = { x: (updatedShape as LineShape).p1.x + dx, y: (updatedShape as LineShape).p1.y + dy }; (updatedShape as LineShape).p2 = { x: (updatedShape as LineShape).p2.x + dx, y: (updatedShape as LineShape).p2.y + dy }; break;
-                    case Tool.RECTANGLE: case Tool.IMAGE: case Tool.TEXT: (updatedShape as RectangleShape | ImageShape | TextShape).x += dx; (updatedShape as RectangleShape | ImageShape | TextShape).y += dy; break;
-                    case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).cx += dx; (updatedShape as CircleShape | ArcShape).cy += dy; break;
-                    case Tool.POLYLINE: (updatedShape as PolylineShape).points = (updatedShape as PolylineShape).points.map((p: Point) => ({ x: p.x + dx, y: p.y + dy })); break;
-                }
-                break;
-            case 'rotate':
-                const { angle = 0 } = modData;
-                updatedShape.rotation = (updatedShape.rotation || 0) + angle;
-                break;
-            case 'scale':
-                const { scaleFactor = 1 } = modData;
-                if (scaleFactor === 1 || scaleFactor <= 0) break;
-                const center = getShapeCenter(updatedShape);
-                switch (updatedShape.type) {
-                    case Tool.RECTANGLE: case Tool.IMAGE: const rect = updatedShape as RectangleShape | ImageShape; rect.width *= scaleFactor; rect.height *= scaleFactor; rect.x = center.x - rect.width / 2; rect.y = center.y - rect.height / 2; break;
-                    case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).r *= scaleFactor; break;
-                    case Tool.LINE: const line = updatedShape as LineShape; const p1Vec = { x: line.p1.x - center.x, y: line.p1.y - center.y }; const p2Vec = { x: line.p2.x - center.x, y: line.p2.y - center.y }; line.p1 = { x: center.x + p1Vec.x * scaleFactor, y: center.y + p1Vec.y * scaleFactor }; line.p2 = { x: center.x + p2Vec.x * scaleFactor, y: center.y + p2Vec.y * scaleFactor }; break;
-                    case Tool.POLYLINE: const poly = updatedShape as PolylineShape; poly.points = poly.points.map((p: Point) => { const vec = { x: p.x - center.x, y: p.y - center.y }; return { x: center.x + vec.x * scaleFactor, y: center.y + vec.y * scaleFactor }; }); break;
-                    case Tool.TEXT: (updatedShape as TextShape).fontSize *= scaleFactor; break;
-                }
-                break;
-        }
-        updateShape(updatedShape);
+            switch (modData.action) {
+                case 'move':
+                    const { dx = 0, dy = 0 } = modData;
+                    switch (updatedShape.type) {
+                        case Tool.LINE: (updatedShape as LineShape).p1 = { x: (updatedShape as LineShape).p1.x + dx, y: (updatedShape as LineShape).p1.y + dy }; (updatedShape as LineShape).p2 = { x: (updatedShape as LineShape).p2.x + dx, y: (updatedShape as LineShape).p2.y + dy }; break;
+                        case Tool.RECTANGLE: case Tool.IMAGE: case Tool.TEXT: (updatedShape as RectangleShape | ImageShape | TextShape).x += dx; (updatedShape as RectangleShape | ImageShape | TextShape).y += dy; break;
+                        case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).cx += dx; (updatedShape as CircleShape | ArcShape).cy += dy; break;
+                        case Tool.POLYLINE: (updatedShape as PolylineShape).points = (updatedShape as PolylineShape).points.map((p: Point) => ({ x: p.x + dx, y: p.y + dy })); break;
+                    }
+                    break;
+                case 'rotate':
+                    const { angle = 0 } = modData;
+                    updatedShape.rotation = (updatedShape.rotation || 0) + angle;
+                    break;
+                case 'scale':
+                    const { scaleFactor = 1 } = modData;
+                    if (scaleFactor === 1 || scaleFactor <= 0) break;
+                    const center = getShapeCenter(updatedShape);
+                    switch (updatedShape.type) {
+                        case Tool.RECTANGLE: case Tool.IMAGE: const rect = updatedShape as RectangleShape | ImageShape; rect.width *= scaleFactor; rect.height *= scaleFactor; rect.x = center.x - rect.width / 2; rect.y = center.y - rect.height / 2; break;
+                        case Tool.CIRCLE: case Tool.ARC: (updatedShape as CircleShape | ArcShape).r *= scaleFactor; break;
+                        case Tool.LINE: const line = updatedShape as LineShape; const p1Vec = { x: line.p1.x - center.x, y: line.p1.y - center.y }; const p2Vec = { x: line.p2.x - center.x, y: line.p2.y - center.y }; line.p1 = { x: center.x + p1Vec.x * scaleFactor, y: center.y + p1Vec.y * scaleFactor }; line.p2 = { x: center.x + p2Vec.x * scaleFactor, y: center.y + p2Vec.y * scaleFactor }; break;
+                        case Tool.POLYLINE: const poly = updatedShape as PolylineShape; poly.points = poly.points.map((p: Point) => { const vec = { x: p.x - center.x, y: p.y - center.y }; return { x: center.x + vec.x * scaleFactor, y: center.y + vec.y * scaleFactor }; }); break;
+                        case Tool.TEXT: (updatedShape as TextShape).fontSize *= scaleFactor; break;
+                    }
+                    break;
+            }
+            return updatedShape;
+        });
+        updateShapes(updatedShapes);
+
       } else if (isModelingCommand) {
-        const selectedShape = shapes.find(s => s.id === selectedShapeId);
+        const selectedShape = shapes.find(s => s.id === selectedShapeIds[0]);
         if (!selectedShape) {
           console.warn("Please select a shape before using a modeling command.");
           setIsGenerating(false);
@@ -679,7 +794,7 @@ const App: React.FC = () => {
                 const line4: LineShape = { ...commonProps, id: `shape_${Date.now()}_l4`, type: Tool.LINE, p1: p4, p2: p4_ };
 
                 newShapes.push(frontFace, backFace, line1, line2, line3, line4);
-                setShapesAndHistory([...shapes.filter(s => s.id !== selectedShapeId), ...newShapes]);
+                setShapesAndHistory([...shapes.filter(s => s.id !== selectedShape.id), ...newShapes]);
 
             } else {
                 console.warn("Extrusion is currently only supported for rectangles.");
@@ -706,9 +821,9 @@ const App: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [addShape, activeLayerId, shapes, selectedShapeId, deleteShape, updateShape, history, historyIndex, handleZooAiGenerate, setShapesAndHistory]);
+  }, [addShape, activeLayerId, shapes, selectedShapeIds, deleteShapes, updateShape, updateShapes, history, historyIndex, handleZooAiGenerate, setShapesAndHistory]);
   
-  const selectedShape = shapes.find(shape => shape.id === selectedShapeId) || null;
+  const selectedShapes = shapes.filter(shape => selectedShapeIds.includes(shape.id)) || [];
   const activeLayer = layers.find(l => l.id === activeLayerId) || defaultLayer;
 
   return (
@@ -722,6 +837,9 @@ const App: React.FC = () => {
         canRedo={canRedo}
         setMobilePanel={setMobilePanel}
         onToggleZooAiPanel={() => setIsZooAiPanelOpen(true)}
+        onSave={handleSave}
+        onLoad={handleLoadRequest}
+        onZoomExtents={zoomExtents}
       />
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 relative bg-gray-900">
@@ -731,9 +849,9 @@ const App: React.FC = () => {
             addShape={addShape}
             updateShape={updateShape}
             updateShapes={updateShapes}
-            deleteShape={deleteShape}
-            selectedShapeId={selectedShapeId}
-            setSelectedShapeId={setSelectedShapeId}
+            deleteShapes={deleteShapes}
+            selectedShapeIds={selectedShapeIds}
+            setSelectedShapeIds={setSelectedShapeIds}
             activeLayer={activeLayer}
             layers={layers}
             setCoords={setCoords}
@@ -741,15 +859,18 @@ const App: React.FC = () => {
             snapEnabled={snapEnabled}
             orthoEnabled={orthoEnabled}
             extrudeShape={extrudeShape}
+            viewBox={viewBox}
+            setViewBox={setViewBox}
+            gridVisible={gridVisible}
           />
         </main>
         
         {/* Desktop Sidebar */}
         <aside className="w-64 flex-col bg-gray-800 border-l border-gray-700 hidden md:flex">
           <PropertiesPanel
-            selectedShape={selectedShape}
+            selectedShapes={selectedShapes}
             updateShape={updateShape}
-            deleteShape={deleteShape}
+            deleteShapes={deleteShapes}
             layers={layers}
           />
           <LayersPanel
@@ -771,7 +892,7 @@ const App: React.FC = () => {
                     </button>
                 </div>
                 <div className="flex-1 overflow-y-auto">
-                    {mobilePanel === 'PROPERTIES' && <PropertiesPanel selectedShape={selectedShape} updateShape={updateShape} deleteShape={deleteShape} layers={layers} />}
+                    {mobilePanel === 'PROPERTIES' && <PropertiesPanel selectedShapes={selectedShapes} updateShape={updateShape} deleteShapes={deleteShapes} layers={layers} />}
                     {mobilePanel === 'LAYERS' && <LayersPanel layers={layers} activeLayerId={activeLayerId} setActiveLayerId={setActiveLayerId} addLayer={addLayer} updateLayer={updateLayer} />}
                 </div>
             </div>
@@ -785,12 +906,21 @@ const App: React.FC = () => {
         setSnapEnabled={setSnapEnabled}
         orthoEnabled={orthoEnabled}
         setOrthoEnabled={setOrthoEnabled}
+        gridVisible={gridVisible}
+        setGridVisible={setGridVisible}
       />
       <ZooAiPanel 
         isOpen={isZooAiPanelOpen}
         onClose={() => setIsZooAiPanelOpen(false)}
         onGenerate={handleZooAiGenerate}
         isGenerating={isGenerating}
+      />
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileLoad}
+        accept=".json"
+        className="hidden"
       />
     </div>
   );

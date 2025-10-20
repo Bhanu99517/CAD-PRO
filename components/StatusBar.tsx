@@ -7,6 +7,8 @@ interface StatusBarProps {
     setSnapEnabled: (enabled: boolean | ((prev: boolean) => boolean)) => void;
     orthoEnabled: boolean;
     setOrthoEnabled: (enabled: boolean | ((prev: boolean) => boolean)) => void;
+    gridVisible: boolean;
+    setGridVisible: (visible: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 const StatusBarItem: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
@@ -28,7 +30,7 @@ const StatusBarButton: React.FC<{
     </button>
 )
 
-const StatusBar: React.FC<StatusBarProps> = ({ coords, snapEnabled, setSnapEnabled, orthoEnabled, setOrthoEnabled }) => {
+const StatusBar: React.FC<StatusBarProps> = ({ coords, snapEnabled, setSnapEnabled, orthoEnabled, setOrthoEnabled, gridVisible, setGridVisible }) => {
   return (
     <div className="h-6 bg-gray-800 border-t border-gray-700 flex items-center text-xs text-gray-400 font-sans shrink-0">
       <div className="flex-1 px-2 md:px-0">
@@ -38,7 +40,9 @@ const StatusBar: React.FC<StatusBarProps> = ({ coords, snapEnabled, setSnapEnabl
         <StatusBarItem className="w-32 md:w-40 font-mono">
             {coords.x.toFixed(2)}, {coords.y.toFixed(2)}
         </StatusBarItem>
-        <StatusBarItem className="hidden sm:flex">GRID</StatusBarItem>
+        <StatusBarButton onClick={() => setGridVisible(prev => !prev)} isActive={gridVisible}>
+            GRID
+        </StatusBarButton>
         <StatusBarButton onClick={() => setOrthoEnabled(prev => !prev)} isActive={orthoEnabled}>
             ORTHO
         </StatusBarButton>

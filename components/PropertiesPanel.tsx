@@ -2,9 +2,9 @@ import React, { ChangeEvent, useCallback } from 'react';
 import { Shape, Tool, Layer, RectangleShape, TextShape } from '../types';
 
 interface PropertiesPanelProps {
-  selectedShape: Shape | null;
+  selectedShapes: Shape[];
   updateShape: (shape: Shape) => void;
-  deleteShape: (id: string) => void;
+  deleteShapes: (ids: string[]) => void;
   layers: Layer[];
 }
 
@@ -26,7 +26,9 @@ const PropertyInput: React.FC<{
     </div>
 );
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShape, updateShape, deleteShape, layers }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShapes, updateShape, deleteShapes, layers }) => {
+  const selectedShape = selectedShapes.length === 1 ? selectedShapes[0] : null;
+
   const handlePropertyChange = useCallback((prop: string, value: string | number) => {
     if (!selectedShape) return;
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
@@ -42,6 +44,12 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShape, update
     const updatedPoint = { ...selectedShape[pointKey], [coord]: numValue };
     updateShape({ ...selectedShape, [pointKey]: updatedPoint });
   }
+
+  const handleDeleteClick = () => {
+      if (selectedShapes.length > 0) {
+          deleteShapes(selectedShapes.map(s => s.id));
+      }
+  };
 
   const renderShapeProperties = () => {
     if (!selectedShape) return null;
@@ -135,20 +143,29 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShape, update
   return (
     <div className="p-4 flex-1 flex flex-col space-y-4 overflow-y-auto">
       <h3 className="text-md font-semibold text-gray-200 border-b border-gray-700 pb-2">Properties</h3>
-      {selectedShape ? (
+      {selectedShapes.length > 0 ? (
         <div className="flex-1 flex flex-col">
             <div className="space-y-3 flex-1">
-                <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-400">Type</span>
-                    <span className="text-sm font-semibold text-gray-200 bg-gray-700 px-2 py-1 rounded">{selectedShape.type}</span>
-                </div>
-                {renderShapeProperties()}
+                {selectedShape ? (
+                    <>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-400">Type</span>
+                            <span className="text-sm font-semibold text-gray-200 bg-gray-700 px-2 py-1 rounded">{selectedShape.type}</span>
+                        </div>
+                        {renderShapeProperties()}
+                    </>
+                ) : (
+                    <div className="text-center text-gray-400 pt-8">
+                        <p>{selectedShapes.length} objects selected</p>
+                        <p className="text-xs text-gray-500 mt-2">Common properties editing is not yet available.</p>
+                    </div>
+                )}
             </div>
             <button 
-                onClick={() => deleteShape(selectedShape.id)}
+                onClick={handleDeleteClick}
                 className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-colors"
             >
-                Delete Shape
+                Delete Selected
             </button>
         </div>
       ) : (

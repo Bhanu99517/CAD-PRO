@@ -24,6 +24,7 @@ export enum Tool {
   ERASE = 'ERASE',
   EXTRUDE = 'EXTRUDE',
   PRESS_PULL = 'PRESS_PULL',
+  OFFSET = 'OFFSET',
 }
 
 export interface Point {
@@ -101,4 +102,19 @@ export interface TextShape extends ShapeBase {
   fontSize: number;
 }
 
-export type Shape = LineShape | RectangleShape | CircleShape | PolylineShape | ImageShape | ArcShape | TextShape;
+export interface DimensionShape extends ShapeBase {
+    type: Tool.DIMENSION;
+    p1: Point;
+    p2: Point;
+    textPosition: Point;
+    offset: number;
+}
+
+export interface LeaderShape extends ShapeBase {
+    type: Tool.LEADER;
+    points: Point[];
+    text: string;
+    textPosition: Point;
+}
+
+export type Shape = LineShape | RectangleShape | CircleShape | PolylineShape | ImageShape | ArcShape | TextShape | DimensionShape | LeaderShape;
