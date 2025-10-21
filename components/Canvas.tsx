@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, MouseEvent, useEffect } from 'react';
-import { Tool, Shape, Point, LineShape, RectangleShape, CircleShape, PolylineShape, Layer, ImageShape, ArcShape, TextShape } from '../types';
+import { Tool, Shape, Point, LineShape, RectangleShape, CircleShape, PolylineShape, Layer, ImageShape, ArcShape, TextShape, ViewMode } from '../types';
 import { getShapeCenter, polarToCartesian, getShapeBoundingBox, doBBoxesIntersect } from '../utils';
 
 interface CanvasProps {
@@ -21,18 +22,20 @@ interface CanvasProps {
   viewBox: { x: number; y: number; w: number; h: number };
   setViewBox: (viewBox: { x: number; y: number; w: number; h: number }) => void;
   gridVisible: boolean;
+  viewMode: ViewMode;
 }
 
-const getMousePos = (svg: SVGSVGElement, e: MouseEvent): Point => {
-  const CTM = svg.getScreenCTM();
-  if (CTM) {
-    return {
-      x: (e.clientX - CTM.e) / CTM.a,
-      y: (e.clientY - CTM.f) / CTM.d,
-    };
-  }
-  return { x: 0, y: 0 };
+const getInitialMousePos = (svg: SVGSVGElement, e: MouseEvent): Point => {
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const inverseCTM = svg.getScreenCTM()?.inverse();
+    if (inverseCTM) {
+        return pt.matrixTransform(inverseCTM);
+    }
+    return { x: 0, y: 0 };
 };
+
 
 const describeArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number): string => {
     if (radius === 0) return "";
@@ -65,7 +68,8 @@ const Canvas: React.FC<CanvasProps> = ({
   coords,
   viewBox,
   setViewBox,
-  gridVisible
+  gridVisible,
+  viewMode,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -110,12 +114,75 @@ const Canvas: React.FC<CanvasProps> = ({
   const [pressPullStartPoint, setPressPullStartPoint] = useState<Point | null>(null);
   const [previewShapes, setPreviewShapes] = useState<Shape[]>([]);
   const [hiddenShapeIds, setHiddenShapeIds] = useState<Set<string>>(new Set());
+  
+  const [projectionCenter, setProjectionCenter] = useState<Point>({ x: 0, y: 0 });
 
   const touchState = useRef<{
     lastDist: number | null,
     lastMidpoint: Point | null,
     isTwoFinger: boolean
   }>({ lastDist: null, lastMidpoint: null, isTwoFinger: false }).current;
+
+  useEffect(() => {
+    if (shapes.length === 0) {
+        setProjectionCenter({ x: viewBox.x + viewBox.w / 2, y: viewBox.y + viewBox.h / 2 });
+        return;
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    shapes.forEach(shape => {
+        const bbox = getShapeBoundingBox(shape);
+        minX = Math.min(minX, bbox.minX);
+        minY = Math.min(minY, bbox.minY);
+        maxX = Math.max(maxX, bbox.maxX);
+        maxY = Math.max(maxY, bbox.maxY);
+    });
+    if (isFinite(minX)) {
+        setProjectionCenter({ x: (minX + maxX) / 2, y: (minY + maxY) / 2 });
+    }
+  }, [shapes, viewBox]);
+
+
+  const projectPoint = (p: Point, center: Point): Point => {
+    if (viewMode !== 'ISOMETRIC') return p;
+
+    const centeredP = { x: p.x - center.x, y: p.y - center.y };
+    
+    // Oblique projection: scale Y, then rotate.
+    const scaledX = centeredP.x;
+    const scaledY = centeredP.y * 0.5;
+
+    const angle = -45 * Math.PI / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const finalX = scaledX * cos - scaledY * sin;
+    const finalY = scaledX * sin + scaledY * cos;
+    
+    return { x: finalX + center.x, y: finalY + center.y };
+  };
+
+  const unprojectPoint = (p: Point, center: Point): Point => {
+    if (viewMode !== 'ISOMETRIC') return p;
+
+    const centeredP = { x: p.x - center.x, y: p.y - center.y };
+    
+    // Inverse of projection: rotate by +45, then scale Y by 2.
+    const angle = 45 * Math.PI / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const unrotatedX = centeredP.x * cos - centeredP.y * sin;
+    const unrotatedY = centeredP.x * sin + centeredP.y * cos;
+    
+    const unscaledX = unrotatedX;
+    const unscaledY = unrotatedY * 2;
+    
+    return { x: unscaledX + center.x, y: unscaledY + center.y };
+  };
+  
+  const getMousePos = (e: MouseEvent<SVGSVGElement>): Point => {
+      if (!svgRef.current) return { x: 0, y: 0 };
+      const svgPoint = getInitialMousePos(svgRef.current, e);
+      return unprojectPoint(svgPoint, projectionCenter);
+  };
 
 
   useEffect(() => {
@@ -304,8 +371,7 @@ const Canvas: React.FC<CanvasProps> = ({
   }
 
   const handleMouseDown = (e: MouseEvent<SVGSVGElement>) => {
-    if (!svgRef.current) return;
-    let pos = getMousePos(svgRef.current, e);
+    let pos = getMousePos(e);
     const { snappedPoint } = getSnapPoint(pos);
     pos = snappedPoint;
     
@@ -415,7 +481,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
     if (activeTool === Tool.PAN) {
         setIsDrawing(true);
-        setPanStart(pos);
+        setPanStart(getInitialMousePos(svgRef.current!, e));
         return;
     }
     
@@ -604,12 +670,20 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const handleMouseMove = (e: MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current) return;
-    let pos = getMousePos(svgRef.current, e);
+    let pos = getMousePos(e);
     setCoords({ x: parseFloat(pos.x.toFixed(2)), y: parseFloat(pos.y.toFixed(2)) });
     
     const { snappedPoint, indicator } = getSnapPoint(pos);
     pos = snappedPoint;
     setSnapIndicator(indicator);
+
+    if (activeTool === Tool.PAN && isDrawing && panStart) {
+        const currentPanPos = getInitialMousePos(svgRef.current, e);
+        const dx = currentPanPos.x - panStart.x;
+        const dy = currentPanPos.y - panStart.y;
+        setViewBox({ ...viewBox, x: viewBox.x - dx, y: viewBox.y - dy });
+        return;
+    }
 
     if (marquee) {
         setMarquee({ ...marquee, x2: pos.x, y2: pos.y });
@@ -658,13 +732,6 @@ const Canvas: React.FC<CanvasProps> = ({
             const dy = Math.abs(pos.y - referencePoint.y);
             if (dx > dy) pos.y = referencePoint.y; else pos.x = referencePoint.x;
         }
-    }
-
-    if (activeTool === Tool.PAN && isDrawing && panStart) {
-        const dx = pos.x - panStart.x;
-        const dy = pos.y - panStart.y;
-        setViewBox({ ...viewBox, x: viewBox.x - dx, y: viewBox.y - dy });
-        return;
     }
 
     if (isDrawing && currentShape?.type === Tool.LINE && startPoint) {
@@ -841,16 +908,14 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const handleMouseUp = () => {
     if (marquee) {
-        const { x1, y1, x2, y2 } = marquee;
         const marqueeBounds = {
-            minX: Math.min(x1, x2),
-            minY: Math.min(y1, y2),
-            maxX: Math.max(x1, x2),
-            maxY: Math.max(y1, y2),
+            minX: Math.min(marquee.x1, marquee.x2),
+            minY: Math.min(marquee.y1, marquee.y2),
+            maxX: Math.max(marquee.x1, marquee.x2),
+            maxY: Math.max(marquee.y1, marquee.y2),
         };
         
-        // isCrossing is true for right-to-left selection
-        const isCrossing = x2 < x1;
+        const isCrossing = marquee.x2 < marquee.x1;
 
         const isShapeInWindow = (shape: Shape): boolean => {
             const bbox = getShapeBoundingBox(shape);
@@ -920,7 +985,7 @@ const Canvas: React.FC<CanvasProps> = ({
       if (!svgRef.current) return;
       e.preventDefault();
       
-      const pos = getMousePos(svgRef.current, e as any);
+      const pos = getInitialMousePos(svgRef.current, e as any);
       const zoomFactor = 1.1;
       const newViewBox = { ...viewBox };
 
@@ -1037,12 +1102,16 @@ const Canvas: React.FC<CanvasProps> = ({
       const fill = isCrossing ? "rgba(44, 153, 56, 0.2)" : "rgba(59, 130, 246, 0.2)";
       const stroke = isCrossing ? "#2c9938" : "#3b82f6";
       const strokeDasharray = isCrossing ? "4" : undefined;
+      
+      const p1 = { x: marquee.x1, y: marquee.y1 };
+      const p2 = { x: marquee.x2, y: marquee.y1 };
+      const p3 = { x: marquee.x2, y: marquee.y2 };
+      const p4 = { x: marquee.x1, y: marquee.y2 };
+      const points = [p1, p2, p3, p4].map(p => projectPoint(p, projectionCenter));
+      
       return (
-          <rect 
-              x={Math.min(marquee.x1, marquee.x2)} 
-              y={Math.min(marquee.y1, marquee.y2)} 
-              width={Math.abs(marquee.x1 - marquee.x2)} 
-              height={Math.abs(marquee.y1 - marquee.y2)} 
+          <polygon
+              points={points.map(p => `${p.x},${p.y}`).join(' ')}
               fill={fill} 
               stroke={stroke} 
               strokeWidth={1 * zoomFactor} 
@@ -1050,36 +1119,88 @@ const Canvas: React.FC<CanvasProps> = ({
           />
       );
   };
+  
+  let viewTransform = '';
+  if (viewMode === 'ISOMETRIC' && projectionCenter) {
+    const { x, y } = projectionCenter;
+    const t1 = `translate(${-x}, ${-y})`;
+    const s = 'scale(1 0.5)';
+    const r = 'rotate(-45)';
+    const t2 = `translate(${x}, ${y})`;
+    viewTransform = `${t2} ${r} ${s} ${t1}`;
+  }
 
   return (
-    <div className="h-full w-full bg-gray-900 cursor-crosshair" style={{ cursor: getCursor() }}>
+    <div className="h-full w-full bg-black cursor-crosshair" style={{ cursor: getCursor() }}>
       <svg
         ref={svgRef} className="h-full w-full" viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
         onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
         onWheel={handleWheel} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       >
         <defs>
-            <pattern id="grid-fine" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(107, 114, 128, 0.3)" strokeWidth={0.5 * zoomFactor}/></pattern>
-            <pattern id="grid-medium" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(107, 114, 128, 0.4)" strokeWidth={1 * zoomFactor}/></pattern>
-            <pattern id="grid-coarse" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(107, 114, 128, 0.5)" strokeWidth={1.5 * zoomFactor}/></pattern>
+            {/* Standalone minor grids */}
+            <pattern id="grid-fine-minor" width="2" height="2" patternUnits="userSpaceOnUse">
+                <path d="M 2 0 L 0 0 0 2" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={0.25 * zoomFactor} />
+            </pattern>
+            <pattern id="grid-medium-minor" width="10" height="10" patternUnits="userSpaceOnUse">
+                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={0.5 * zoomFactor} />
+            </pattern>
+            <pattern id="grid-coarse-minor" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={1 * zoomFactor} />
+            </pattern>
+            
+            {/* Combined grids */}
+            <pattern id="grid-fine" width="10" height="10" patternUnits="userSpaceOnUse">
+                <rect width="10" height="10" fill="url(#grid-fine-minor)" />
+                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={0.5 * zoomFactor} />
+            </pattern>
+            <pattern id="grid-medium" width="50" height="50" patternUnits="userSpaceOnUse">
+                <rect width="50" height="50" fill="url(#grid-medium-minor)" />
+                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={1 * zoomFactor} />
+            </pattern>
+            <pattern id="grid-coarse" width="100" height="100" patternUnits="userSpaceOnUse">
+                <rect width="100" height="100" fill="url(#grid-coarse-minor)" />
+                <path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={1.5 * zoomFactor} />
+            </pattern>
         </defs>
-        {gridVisible && <rect width={viewBox.w} height={viewBox.h} x={viewBox.x} y={viewBox.y} fill={`url(#${gridPatternId})`} />}
+        <g id="grid-group" transform={viewTransform}>
+            {gridVisible && <rect width="100000" height="100000" x="-50000" y="-50000" fill={`url(#${gridPatternId})`} />}
+        </g>
         
-        {shapes.map(shape => renderShape(shape))}
-        {currentShape && renderShape(currentShape)}
-        {isCopying && currentShape && renderShape(currentShape)}
-        {previewShapes.map(renderShape)}
-        {extrusionPreviewShapes.map(renderShape)}
+        <g id="shapes-group" transform={viewTransform}>
+            {shapes.map(shape => renderShape(shape))}
+            {currentShape && renderShape(currentShape)}
+            {isCopying && currentShape && renderShape(currentShape)}
+            {previewShapes.map(renderShape)}
+            {extrusionPreviewShapes.map(renderShape)}
+        </g>
         
-        {mirrorLineStart && mirrorLineEnd && <line x1={mirrorLineStart.x} y1={mirrorLineStart.y} x2={mirrorLineEnd.x} y2={mirrorLineEnd.y} stroke="#0ea5e9" strokeDasharray="5,5" strokeWidth={1 * zoomFactor} /> }
-        {snapIndicator && <rect x={snapIndicator.x - 4 * zoomFactor} y={snapIndicator.y - 4 * zoomFactor} width={8 * zoomFactor} height={8 * zoomFactor} fill="none" stroke="#3b82f6" strokeWidth={1 * zoomFactor} />}
+        {/* Render temporary visuals that are already projected */}
+        {mirrorLineStart && mirrorLineEnd && 
+            (() => {
+                const p1 = projectPoint(mirrorLineStart, projectionCenter);
+                const p2 = projectPoint(mirrorLineEnd, projectionCenter);
+                return <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#0ea5e9" strokeDasharray="5,5" strokeWidth={1 * zoomFactor} />;
+            })()
+        }
+        {snapIndicator && 
+            (() => {
+                const p = projectPoint(snapIndicator, projectionCenter);
+                return <rect x={p.x - 4 * zoomFactor} y={p.y - 4 * zoomFactor} width={8 * zoomFactor} height={8 * zoomFactor} fill="none" stroke="#3b82f6" strokeWidth={1 * zoomFactor} />
+            })()
+        }
         {renderMarquee()}
       </svg>
       {drawingInfo && (
-        <div className="absolute p-1 bg-gray-800 text-xs rounded-md pointer-events-none" style={{ left: (coords.x - viewBox.x) / viewBox.w * clientWidth + 20, top: (coords.y - viewBox.y) / viewBox.h * (svgRef.current?.clientHeight || 1) + 20 }}>
-          <div>Length: {drawingInfo.length.toFixed(2)}</div>
-          <div>Angle: {drawingInfo.angle.toFixed(2)}°</div>
-        </div>
+        (() => {
+            const projectedCoords = projectPoint(coords, projectionCenter);
+            return (
+                <div className="absolute p-1 bg-gray-800 text-xs rounded-md pointer-events-none" style={{ left: (projectedCoords.x - viewBox.x) / viewBox.w * clientWidth + 20, top: (projectedCoords.y - viewBox.y) / viewBox.h * (svgRef.current?.clientHeight || 1) + 20 }}>
+                <div>Length: {drawingInfo.length.toFixed(2)}</div>
+                <div>Angle: {drawingInfo.angle.toFixed(2)}°</div>
+                </div>
+            )
+        })()
       )}
     </div>
   );

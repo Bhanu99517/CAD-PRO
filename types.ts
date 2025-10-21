@@ -27,6 +27,8 @@ export enum Tool {
   OFFSET = 'OFFSET',
 }
 
+export type ViewMode = 'TOP' | 'ISOMETRIC' | 'FRONT' | 'SIDE' | 'PERSPECTIVE';
+
 export interface Point {
   x: number;
   y: number;

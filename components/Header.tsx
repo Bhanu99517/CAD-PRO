@@ -1,5 +1,6 @@
-import React from 'react';
-import { Tool } from '../types';
+
+import React, { useState } from 'react';
+import { Tool, ViewMode } from '../types';
 import { CursorIcon } from './icons/CursorIcon';
 import { LineIcon } from './icons/LineIcon';
 import { RectangleIcon } from './icons/RectangleIcon';
@@ -24,7 +25,6 @@ import { LayersIcon } from './icons/LayersIcon';
 import { EraseIcon } from './icons/EraseIcon';
 import { SlidersIcon } from './icons/SlidersIcon';
 import { ExtrudeIcon } from './icons/ExtrudeIcon';
-import { ZooAiIcon } from './icons/ZooAiIcon';
 import { BoxIcon } from './icons/BoxIcon';
 import { SmoothObjectIcon } from '../SmoothObjectIcon';
 import { MeshIcon } from './icons/MeshIcon';
@@ -35,6 +35,8 @@ import { OffsetIcon } from './icons/OffsetIcon';
 import { ZoomExtentsIcon } from './icons/ZoomExtentsIcon';
 import { SaveIcon } from './icons/SaveIcon';
 import { FolderOpenIcon } from './icons/FolderOpenIcon';
+import { ViewModeIcon } from './icons/ViewModeIcon';
+import { ZooAiIcon } from './icons/ZooAiIcon';
 
 
 const UndoIcon: React.FC<{ className: string }> = ({ className }) => (
@@ -59,11 +61,14 @@ interface HeaderProps {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  setMobilePanel: (panel: 'PROPERTIES' | 'LAYERS' | null) => void;
-  onToggleZooAiPanel: () => void;
+  setMobilePanel: (panel: 'PROPERTIES' | 'LAYERS' | 'ZOO_AI' | null) => void;
   onSave: () => void;
   onLoad: () => void;
   onZoomExtents: () => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  desktopPanel: 'PROPERTIES_LAYERS' | 'ZOO_AI';
+  setDesktopPanel: (panel: 'PROPERTIES_LAYERS' | 'ZOO_AI') => void;
 }
 
 const ToolButton: React.FC<{
@@ -133,7 +138,14 @@ const threeDToolAlert = (toolName: string) => {
     alert(`${toolName} is a 3D modeling tool and is not yet implemented in this 2D version.`);
 };
 
-const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo, setMobilePanel, onToggleZooAiPanel, onSave, onLoad, onZoomExtents }) => {
+const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo, setMobilePanel, onSave, onLoad, onZoomExtents, viewMode, setViewMode, desktopPanel, setDesktopPanel }) => {
+  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
+
+  const handleViewChange = (mode: ViewMode) => {
+      setViewMode(mode);
+      setIsViewMenuOpen(false);
+  }
+
   return (
     <header className="bg-gray-800 border-b border-gray-700 flex flex-col shrink-0">
         <div className="flex items-center px-2 md:px-4 h-10 md:h-8">
@@ -154,6 +166,7 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
             <div className="flex-grow"></div>
             {/* Mobile Panel Toggles */}
             <div className="flex md:hidden items-center space-x-2">
+                 <button onClick={() => setMobilePanel('ZOO_AI')} className="p-2 rounded-md hover:bg-gray-700 text-gray-300" aria-label="Toggle Zoo AI Panel"><ZooAiIcon className="w-6 h-6" /></button>
                  <button onClick={() => setMobilePanel('LAYERS')} className="p-2 rounded-md hover:bg-gray-700 text-gray-300" aria-label="Toggle Layers Panel"><LayersIcon className="w-6 h-6" /></button>
                  <button onClick={() => setMobilePanel('PROPERTIES')} className="p-2 rounded-md hover:bg-gray-700 text-gray-300" aria-label="Toggle Properties Panel"><SlidersIcon className="w-6 h-6" /></button>
             </div>
@@ -234,10 +247,14 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                 </div>
             </ToolGroup>
             
-            <ToolGroup title="AI Studio">
-                <div className="flex items-start">
-                    <ToolButton Icon={ZooAiIcon} label="Zoo AI" onClick={onToggleZooAiPanel} isActive={false} large />
-                </div>
+             <ToolGroup title="AI">
+                <ToolButton
+                    Icon={ZooAiIcon}
+                    label="Zoo AI"
+                    isActive={desktopPanel === 'ZOO_AI'}
+                    onClick={() => setDesktopPanel(desktopPanel === 'ZOO_AI' ? 'PROPERTIES_LAYERS' : 'ZOO_AI')}
+                    large
+                />
             </ToolGroup>
 
              <div className="flex-grow"></div>
@@ -249,11 +266,25 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                  </div>
             </ToolGroup>
 
-             <ToolGroup title="View">
+             <ToolGroup title="View" className="relative">
                  <div className="flex flex-col space-y-2">
                     <ToolButton Icon={CursorIcon} label="Select" isActive={activeTool === Tool.SELECT} onClick={() => setActiveTool(Tool.SELECT)} />
                     <ToolButton Icon={HandIcon} label="Pan" isActive={activeTool === Tool.PAN} onClick={() => setActiveTool(Tool.PAN)} />
+                 </div>
+                 <div className="flex flex-col space-y-2 ml-1">
                     <ToolButton Icon={ZoomExtentsIcon} label="Zoom Extents" isActive={false} onClick={onZoomExtents} />
+                    <div className="relative">
+                        <ToolButton Icon={ViewModeIcon} label={viewMode} isActive={isViewMenuOpen} onClick={() => setIsViewMenuOpen(prev => !prev)} />
+                        {isViewMenuOpen && (
+                            <div className="absolute top-full right-0 mt-1 bg-gray-700 rounded-md shadow-lg z-10 w-32 p-1">
+                                <button onClick={() => handleViewChange('TOP')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Top</button>
+                                <button onClick={() => handleViewChange('ISOMETRIC')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Isometric</button>
+                                <button disabled className="w-full text-left text-sm p-2 rounded text-gray-500 cursor-not-allowed">Front</button>
+                                <button disabled className="w-full text-left text-sm p-2 rounded text-gray-500 cursor-not-allowed">Side</button>
+                                <button disabled className="w-full text-left text-sm p-2 rounded text-gray-500 cursor-not-allowed">Perspective</button>
+                            </div>
+                        )}
+                    </div>
                  </div>
              </ToolGroup>
 
@@ -283,8 +314,6 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                 <ToolButton Icon={ScaleIcon} label="Scale" isActive={activeTool === Tool.SCALE} onClick={() => setActiveTool(Tool.SCALE)} />
                 <ToolButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
                 <ToolButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
-                <div className="border-l border-gray-700 mx-1"></div>
-                 <ToolButton Icon={ZooAiIcon} label="Zoo AI" onClick={onToggleZooAiPanel} isActive={false} />
                 <div className="border-l border-gray-700 mx-1"></div>
                 <ToolButton Icon={UndoIcon} label="Undo" isActive={false} onClick={undo} disabled={!canUndo} />
                 <ToolButton Icon={RedoIcon} label="Redo" isActive={false} onClick={redo} disabled={!canRedo} />
