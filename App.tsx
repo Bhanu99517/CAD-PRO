@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape, TextShape, ViewMode } from './types';
 import Header from './components/Header';
@@ -430,6 +431,20 @@ const App: React.FC = () => {
     }
   }, [shapes, layers, activeLayer, selectedShapeIds, viewBox]);
   
+  const handleSetLimits = useCallback((p1: Point, p2: Point) => {
+    const width = Math.abs(p2.x - p1.x);
+    const height = Math.abs(p2.y - p1.y);
+    if (width > 0 && height > 0) {
+        setViewBox({
+            x: Math.min(p1.x, p2.x),
+            y: Math.min(p1.y, p2.y),
+            w: width,
+            h: height,
+        });
+    } else {
+        alert("Invalid limits. Width and height must be greater than zero.");
+    }
+  }, []);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-black text-white font-sans overflow-hidden">
@@ -526,6 +541,8 @@ const App: React.FC = () => {
       <CommandLine 
         handleCommand={handleCommand}
         isAiProcessing={isAiProcessing}
+        setActiveTool={setActiveTool}
+        onSetLimits={handleSetLimits}
       />
       <StatusBar 
         coords={coords} 

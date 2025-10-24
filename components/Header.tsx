@@ -276,12 +276,19 @@ const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, 
                     <div className="relative">
                         <ToolButton Icon={ViewModeIcon} label={viewMode} isActive={isViewMenuOpen} onClick={() => setIsViewMenuOpen(prev => !prev)} />
                         {isViewMenuOpen && (
-                            <div className="absolute top-full right-0 mt-1 bg-gray-700 rounded-md shadow-lg z-10 w-32 p-1">
+                            <div className="absolute top-full right-0 mt-1 bg-gray-700 rounded-md shadow-lg z-10 w-36 p-1">
                                 <button onClick={() => handleViewChange('TOP')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Top</button>
+                                <button onClick={() => handleViewChange('BOTTOM')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Bottom</button>
+                                <button onClick={() => handleViewChange('FRONT')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Front</button>
+                                <button onClick={() => handleViewChange('BACK')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Back</button>
+                                <button onClick={() => handleViewChange('LEFT')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Left Side</button>
+                                <button onClick={() => handleViewChange('RIGHT')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Right Side</button>
+                                <div className="my-1 border-t border-gray-600"></div>
                                 <button onClick={() => handleViewChange('ISOMETRIC')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Isometric</button>
-                                <button disabled className="w-full text-left text-sm p-2 rounded text-gray-500 cursor-not-allowed">Front</button>
-                                <button disabled className="w-full text-left text-sm p-2 rounded text-gray-500 cursor-not-allowed">Side</button>
-                                <button disabled className="w-full text-left text-sm p-2 rounded text-gray-500 cursor-not-allowed">Perspective</button>
+                                <button onClick={() => handleViewChange('PERSPECTIVE')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Perspective</button>
+                                <div className="my-1 border-t border-gray-600"></div>
+                                <button onClick={() => handleViewChange('TOP')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Orthographic</button>
+                                <button disabled className="w-full text-left text-sm p-2 rounded text-gray-500 cursor-not-allowed">Custom View</button>
                             </div>
                         )}
                     </div>

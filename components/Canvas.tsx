@@ -143,39 +143,81 @@ const Canvas: React.FC<CanvasProps> = ({
 
 
   const projectPoint = (p: Point, center: Point): Point => {
-    if (viewMode !== 'ISOMETRIC') return p;
-
-    const centeredP = { x: p.x - center.x, y: p.y - center.y };
+    if (viewMode === 'TOP') return p;
     
-    // Oblique projection: scale Y, then rotate.
-    const scaledX = centeredP.x;
-    const scaledY = centeredP.y * 0.5;
+    let { x, y } = { x: p.x - center.x, y: p.y - center.y };
+    const SQUASH_FACTOR = 0.1;
 
-    const angle = -45 * Math.PI / 180;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const finalX = scaledX * cos - scaledY * sin;
-    const finalY = scaledX * sin + scaledY * cos;
-    
-    return { x: finalX + center.x, y: finalY + center.y };
+    switch(viewMode) {
+        case 'BOTTOM':
+            y = -y;
+            break;
+        case 'FRONT':
+            y *= SQUASH_FACTOR;
+            break;
+        case 'BACK':
+            x = -x;
+            y *= SQUASH_FACTOR;
+            break;
+        case 'LEFT':
+            x *= SQUASH_FACTOR;
+            break;
+        case 'RIGHT':
+            x *= -SQUASH_FACTOR;
+            break;
+        case 'ISOMETRIC':
+        case 'PERSPECTIVE':
+            const scaledY_iso = y * 0.5;
+            const angle_iso = -45 * Math.PI / 180;
+            const cos_iso = Math.cos(angle_iso);
+            const sin_iso = Math.sin(angle_iso);
+            const isoX = x * cos_iso - scaledY_iso * sin_iso;
+            const isoY = x * sin_iso + scaledY_iso * cos_iso;
+            x = isoX;
+            y = isoY;
+            break;
+    }
+
+    return { x: x + center.x, y: y + center.y };
   };
 
   const unprojectPoint = (p: Point, center: Point): Point => {
-    if (viewMode !== 'ISOMETRIC') return p;
+      if (viewMode === 'TOP') return p;
 
-    const centeredP = { x: p.x - center.x, y: p.y - center.y };
-    
-    // Inverse of projection: rotate by +45, then scale Y by 2.
-    const angle = 45 * Math.PI / 180;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const unrotatedX = centeredP.x * cos - centeredP.y * sin;
-    const unrotatedY = centeredP.x * sin + centeredP.y * cos;
-    
-    const unscaledX = unrotatedX;
-    const unscaledY = unrotatedY * 2;
-    
-    return { x: unscaledX + center.x, y: unscaledY + center.y };
+      let { x, y } = { x: p.x - center.x, y: p.y - center.y };
+      const SQUASH_FACTOR = 0.1;
+
+      switch(viewMode) {
+          case 'BOTTOM':
+              y = -y;
+              break;
+          case 'FRONT':
+              y /= SQUASH_FACTOR;
+              break;
+          case 'BACK':
+              y /= SQUASH_FACTOR;
+              x = -x;
+              break;
+          case 'LEFT':
+              x /= SQUASH_FACTOR;
+              break;
+          case 'RIGHT':
+              x /= -SQUASH_FACTOR;
+              break;
+          case 'ISOMETRIC':
+          case 'PERSPECTIVE':
+              const angle_iso_inv = 45 * Math.PI / 180;
+              const cos_iso_inv = Math.cos(angle_iso_inv);
+              const sin_iso_inv = Math.sin(angle_iso_inv);
+              const unrotatedX = x * cos_iso_inv - y * sin_iso_inv;
+              const unrotatedY = x * sin_iso_inv + y * cos_iso_inv;
+
+              x = unrotatedX;
+              y = unrotatedY * 2;
+              break;
+      }
+
+      return { x: x + center.x, y: y + center.y };
   };
   
   const getMousePos = (e: MouseEvent<SVGSVGElement>): Point => {
@@ -1078,79 +1120,6 @@ const Canvas: React.FC<CanvasProps> = ({
       transform: `rotate(${shape.rotation || 0} ${center.x} ${center.y})`,
     };
 
-    if (viewMode === 'ISOMETRIC') {
-        const zDepth = 10;
-        const getBottomPoint = (p: Point) => ({ x: p.x, y: p.y + zDepth });
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { id, ...gProps } = props;
-
-        switch (shape.type) {
-            case Tool.LINE: {
-                const { p1, p2 } = shape;
-                const bottomP1 = getBottomPoint(p1);
-                const bottomP2 = getBottomPoint(p2);
-                return (
-                    <g {...gProps}>
-                        <polygon id={shape.id} points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${bottomP2.x},${bottomP2.y} ${bottomP1.x},${bottomP1.y}`} fill={props.stroke} fillOpacity="0.2" />
-                    </g>
-                );
-            }
-            case Tool.RECTANGLE: {
-                const { x, y, width, height, rx, ry } = shape;
-                const topPoints = [ { x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height } ];
-                const bottomPoints = topPoints.map(getBottomPoint);
-                return (
-                    <g {...gProps}>
-                        <rect id={shape.id} x={x} y={y} width={width} height={height} rx={rx} ry={ry} />
-                        <rect x={bottomPoints[0].x} y={bottomPoints[0].y} width={width} height={height} rx={rx} ry={ry} />
-                        {topPoints.map((p, i) => (
-                            <line key={i} x1={p.x} y1={p.y} x2={bottomPoints[i].x} y2={bottomPoints[i].y} />
-                        ))}
-                    </g>
-                );
-            }
-            case Tool.CIRCLE: {
-                const { cx, cy, r } = shape;
-                const bottomCy = cy + zDepth;
-                 return (
-                     <g {...gProps}>
-                         <circle id={shape.id} cx={cx} cy={cy} r={r} />
-                         <circle cx={cx} cy={bottomCy} r={r} />
-                         <line x1={cx - r} y1={cy} x2={cx - r} y2={bottomCy} />
-                         <line x1={cx + r} y1={cy} x2={cx + r} y2={bottomCy} />
-                     </g>
-                 );
-            }
-            case Tool.ARC: {
-                const { cx, cy, r, startAngle, endAngle } = shape;
-                const bottomCy = cy + zDepth;
-                const startPoint = polarToCartesian(cx, cy, r, endAngle);
-                const endPoint = polarToCartesian(cx, cy, r, startAngle);
-                return (
-                    <g {...gProps}>
-                        <path id={shape.id} d={describeArc(cx, cy, r, startAngle, endAngle)} />
-                        <path d={describeArc(cx, bottomCy, r, startAngle, endAngle)} />
-                        <line x1={startPoint.x} y1={startPoint.y} x2={startPoint.x} y2={startPoint.y + zDepth} />
-                        <line x1={endPoint.x} y1={endPoint.y} x2={endPoint.x} y2={endPoint.y + zDepth} />
-                    </g>
-                );
-            }
-            case Tool.POLYLINE: {
-                const { points } = shape;
-                const bottomPoints = points.map(getBottomPoint);
-                return (
-                     <g {...gProps}>
-                        <polyline id={shape.id} points={points.map(p => `${p.x},${p.y}`).join(' ')} />
-                        <polyline points={bottomPoints.map(p => `${p.x},${p.y}`).join(' ')} />
-                        {points.map((p, i) => (
-                            <line key={i} x1={p.x} y1={p.y} x2={bottomPoints[i].x} y2={bottomPoints[i].y} />
-                        ))}
-                    </g>
-                );
-            }
-        }
-    }
-
     const { transform, stroke, strokeWidth } = props;
     const hitAreaStrokeWidth = 10 * zoomFactor;
 
@@ -1220,13 +1189,38 @@ const Canvas: React.FC<CanvasProps> = ({
   };
   
   let viewTransform = '';
-  if (viewMode === 'ISOMETRIC' && projectionCenter) {
+  if (viewMode !== 'TOP' && projectionCenter) {
     const { x, y } = projectionCenter;
     const t1 = `translate(${-x}, ${-y})`;
-    const s = 'scale(1 0.5)';
-    const r = 'rotate(-45)';
     const t2 = `translate(${x}, ${y})`;
-    viewTransform = `${t2} ${r} ${s} ${t1}`;
+    let coreTransform = '';
+    
+    const SQUASH_FACTOR = 0.1;
+
+    switch(viewMode) {
+        case 'BOTTOM':
+            coreTransform = 'scale(1, -1)';
+            break;
+        case 'FRONT':
+            coreTransform = `scale(1, ${SQUASH_FACTOR})`;
+            break;
+        case 'BACK':
+            coreTransform = `scale(-1, ${SQUASH_FACTOR})`;
+            break;
+        case 'LEFT':
+            coreTransform = `scale(${SQUASH_FACTOR}, 1)`;
+            break;
+        case 'RIGHT':
+            coreTransform = `scale(-${SQUASH_FACTOR}, 1)`;
+            break;
+        case 'ISOMETRIC':
+        case 'PERSPECTIVE':
+            coreTransform = 'rotate(-45) scale(1 0.5)';
+            break;
+    }
+    if (coreTransform) {
+        viewTransform = `${t2} ${coreTransform} ${t1}`;
+    }
   }
 
   return (
