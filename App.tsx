@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape, TextShape, ViewMode } from './types';
 import Header from './components/Header';
@@ -11,14 +12,6 @@ import StatusBar from './components/StatusBar';
 import { getShapeCenter } from './utils';
 import { GoogleGenAI, FunctionDeclaration, Type, Modality } from '@google/genai';
 import ZooAiPanel from './components/ZooAiPanel';
-
-// Declare SpeechRecognition globally
-declare global {
-  interface Window {
-    webkitSpeechRecognition: any;
-    SpeechRecognition: any;
-  }
-}
 
 const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState<Tool>(Tool.SELECT);
@@ -47,63 +40,6 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: 1920, h: 1080 });
-
-  const recognitionRef = useRef<any>(null);
-  const [isVoiceListening, setIsVoiceListening] = useState(false);
-
-  useEffect(() => {
-    if (window.SpeechRecognition || window.webkitSpeechRecognition) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'en-US';
-
-      recognitionRef.current.onstart = () => {
-        setIsVoiceListening(true);
-        setAiResponseText('Listening...');
-      };
-
-      recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setAiResponseText(`Heard: "${transcript}"`);
-        handleCommand(transcript); // Process the voice command
-      };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setAiError(`Voice input error: ${event.error}`);
-        setIsVoiceListening(false);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsVoiceListening(false);
-        setAiResponseText(null);
-      };
-    } else {
-      console.warn('Speech Recognition API not supported in this browser.');
-      setAiError('Voice input not supported in your browser.');
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, []); // Empty dependency array means this runs once on mount
-
-  const startVoiceInput = () => {
-    if (recognitionRef.current && !isVoiceListening) {
-      recognitionRef.current.start();
-    }
-  };
-
-  const stopVoiceInput = () => {
-    if (recognitionRef.current && isVoiceListening) {
-      recognitionRef.current.stop();
-    }
-  };
-
 
   const setShapesAndHistory = (newShapes: Shape[], fromHistory = false) => {
       const currentShapes = history[historyIndex];
@@ -160,7 +96,7 @@ const App: React.FC = () => {
 
   const redo = useCallback(() => {
       if (canRedo) {
-          setHistoryIndex(i => i + 1);
+          setHistoryIndex(i => i - 1);
       }
   }, [canRedo]);
   
@@ -492,7 +428,7 @@ const App: React.FC = () => {
     } finally {
       setIsAiProcessing(false);
     }
-  }, [shapes, layers, activeLayer, selectedShapeIds, viewBox, startVoiceInput, stopVoiceInput]);
+  }, [shapes, layers, activeLayer, selectedShapeIds, viewBox]);
   
 
   return (
@@ -588,10 +524,7 @@ const App: React.FC = () => {
 
       </div>
       <CommandLine 
-        handleCommand={handleCommand} 
-        startVoiceInput={startVoiceInput}
-        stopVoiceInput={stopVoiceInput}
-        isListening={isVoiceListening}
+        handleCommand={handleCommand}
         isAiProcessing={isAiProcessing}
       />
       <StatusBar 
