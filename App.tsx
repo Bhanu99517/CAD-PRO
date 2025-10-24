@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape, TextShape, ViewMode } from './types';
 import Header from './components/Header';
@@ -8,8 +9,16 @@ import LayersPanel from './LayersPanel';
 import CommandLine from './components/CommandLine';
 import StatusBar from './components/StatusBar';
 import { getShapeCenter } from './utils';
-import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
+import { GoogleGenAI, FunctionDeclaration, Type, Modality } from '@google/genai';
 import ZooAiPanel from './components/ZooAiPanel';
+
+// Declare SpeechRecognition globally
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+    SpeechRecognition: any;
+  }
+}
 
 const App: React.FC = () => {
   const [activeTool, setActiveTool] = useState<Tool>(Tool.SELECT);
@@ -38,6 +47,63 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: 1920, h: 1080 });
+
+  const recognitionRef = useRef<any>(null);
+  const [isVoiceListening, setIsVoiceListening] = useState(false);
+
+  useEffect(() => {
+    if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onstart = () => {
+        setIsVoiceListening(true);
+        setAiResponseText('Listening...');
+      };
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setAiResponseText(`Heard: "${transcript}"`);
+        handleCommand(transcript); // Process the voice command
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setAiError(`Voice input error: ${event.error}`);
+        setIsVoiceListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsVoiceListening(false);
+        setAiResponseText(null);
+      };
+    } else {
+      console.warn('Speech Recognition API not supported in this browser.');
+      setAiError('Voice input not supported in your browser.');
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []); // Empty dependency array means this runs once on mount
+
+  const startVoiceInput = () => {
+    if (recognitionRef.current && !isVoiceListening) {
+      recognitionRef.current.start();
+    }
+  };
+
+  const stopVoiceInput = () => {
+    if (recognitionRef.current && isVoiceListening) {
+      recognitionRef.current.stop();
+    }
+  };
+
 
   const setShapesAndHistory = (newShapes: Shape[], fromHistory = false) => {
       const currentShapes = history[historyIndex];
@@ -299,7 +365,23 @@ const App: React.FC = () => {
         }
     };
 
-    const tools = [drawShapeDeclaration, modifyShapesDeclaration, deleteShapesDeclaration, createLayerDeclaration];
+    const generateImageDeclaration: FunctionDeclaration = {
+        name: 'generateImage',
+        description: 'Generates a design image based on a textual description and adds it to the canvas. Coordinates and dimensions are in world units.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                prompt: { type: Type.STRING, description: 'The detailed textual description for the image to be generated.' },
+                x: { type: Type.NUMBER, description: 'Optional: X coordinate for the top-left corner of the image.' },
+                y: { type: Type.NUMBER, description: 'Optional: Y coordinate for the top-left corner of the image.' },
+                width: { type: Type.NUMBER, description: 'Optional: Width of the image.' },
+                height: { type: Type.NUMBER, description: 'Optional: Height of the image.' },
+            },
+            required: ['prompt'],
+        }
+    };
+
+    const tools = [drawShapeDeclaration, modifyShapesDeclaration, deleteShapesDeclaration, createLayerDeclaration, generateImageDeclaration];
 
     try {
       const response = await ai.models.generateContent({
@@ -360,6 +442,45 @@ const App: React.FC = () => {
                     setActiveLayerId(newLayer.id);
                     break;
                 }
+                case 'generateImage': {
+                    const { prompt, x, y, width, height } = args;
+                    // Default image size and position if not provided by AI, relative to current viewBox
+                    const imgX = x ?? (viewBox.x + viewBox.w * 0.25);
+                    const imgY = y ?? (viewBox.y + viewBox.h * 0.25);
+                    const imgWidth = width ?? (viewBox.w * 0.5);
+                    const imgHeight = height ?? (viewBox.h * 0.5);
+
+                    const imageGenerationResponse = await ai.models.generateContent({
+                        model: 'gemini-2.5-flash-image', // Using gemini-2.5-flash-image for general image generation
+                        contents: { parts: [{ text: prompt }] },
+                        config: {
+                            responseModalities: [Modality.IMAGE],
+                        },
+                    });
+
+                    const base64ImagePart = imageGenerationResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    if (base64ImagePart) {
+                        const imageUrl = `data:image/png;base64,${base64ImagePart}`; // Assuming PNG, might need to infer mimeType
+                        const newImageShape: ImageShape = {
+                            id: `shape_${Date.now()}`,
+                            type: Tool.IMAGE,
+                            x: imgX,
+                            y: imgY,
+                            width: imgWidth,
+                            height: imgHeight,
+                            href: imageUrl,
+                            layerId: activeLayer.id,
+                            color: activeLayer.color,
+                            strokeWidth: 0,
+                            rotation: 0,
+                        };
+                        addShape(newImageShape);
+                        setAiResponseText('Generated image based on your description.');
+                    } else {
+                        setAiError('Failed to generate image. No image data received.');
+                    }
+                    break;
+                }
             }
         }
       } else {
@@ -371,7 +492,7 @@ const App: React.FC = () => {
     } finally {
       setIsAiProcessing(false);
     }
-  }, [shapes, layers, activeLayer, selectedShapeIds]);
+  }, [shapes, layers, activeLayer, selectedShapeIds, viewBox, startVoiceInput, stopVoiceInput]);
   
 
   return (
@@ -466,7 +587,13 @@ const App: React.FC = () => {
         )}
 
       </div>
-      <CommandLine handleCommand={handleCommand} />
+      <CommandLine 
+        handleCommand={handleCommand} 
+        startVoiceInput={startVoiceInput}
+        stopVoiceInput={stopVoiceInput}
+        isListening={isVoiceListening}
+        isAiProcessing={isAiProcessing}
+      />
       <StatusBar 
         coords={coords} 
         snapEnabled={snapEnabled} 
