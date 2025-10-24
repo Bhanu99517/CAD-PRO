@@ -1061,6 +1061,9 @@ const Canvas: React.FC<CanvasProps> = ({
       if (e.touches.length < 2) { touchState.isTwoFinger = false; touchState.lastDist = null; touchState.lastMidpoint = null; }
       if (e.touches.length === 0) { handleMouseUp(); }
   };
+  
+  const clientWidth = svgRef.current?.clientWidth || 1;
+  const zoomFactor = viewBox.w / clientWidth;
 
   const renderShape = (shape: Shape) => {
     if (hiddenShapeIds.has(shape.id)) return null;
@@ -1071,28 +1074,124 @@ const Canvas: React.FC<CanvasProps> = ({
     const center = getShapeCenter(shape);
     const props: any = {
       key: shape.id, id: shape.id, stroke: isSelected ? '#3b82f6' : color,
-      strokeWidth: shape.strokeWidth + (isSelected ? 1.5 : 0), fill: 'none',
+      strokeWidth: shape.strokeWidth + (isSelected ? 1.5 : 0), fill: 'transparent',
       transform: `rotate(${shape.rotation || 0} ${center.x} ${center.y})`,
     };
+
+    if (viewMode === 'ISOMETRIC') {
+        const zDepth = 10;
+        const getBottomPoint = (p: Point) => ({ x: p.x, y: p.y + zDepth });
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id, ...gProps } = props;
+
+        switch (shape.type) {
+            case Tool.LINE: {
+                const { p1, p2 } = shape;
+                const bottomP1 = getBottomPoint(p1);
+                const bottomP2 = getBottomPoint(p2);
+                return (
+                    <g {...gProps}>
+                        <polygon id={shape.id} points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${bottomP2.x},${bottomP2.y} ${bottomP1.x},${bottomP1.y}`} fill={props.stroke} fillOpacity="0.2" />
+                    </g>
+                );
+            }
+            case Tool.RECTANGLE: {
+                const { x, y, width, height, rx, ry } = shape;
+                const topPoints = [ { x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height } ];
+                const bottomPoints = topPoints.map(getBottomPoint);
+                return (
+                    <g {...gProps}>
+                        <rect id={shape.id} x={x} y={y} width={width} height={height} rx={rx} ry={ry} />
+                        <rect x={bottomPoints[0].x} y={bottomPoints[0].y} width={width} height={height} rx={rx} ry={ry} />
+                        {topPoints.map((p, i) => (
+                            <line key={i} x1={p.x} y1={p.y} x2={bottomPoints[i].x} y2={bottomPoints[i].y} />
+                        ))}
+                    </g>
+                );
+            }
+            case Tool.CIRCLE: {
+                const { cx, cy, r } = shape;
+                const bottomCy = cy + zDepth;
+                 return (
+                     <g {...gProps}>
+                         <circle id={shape.id} cx={cx} cy={cy} r={r} />
+                         <circle cx={cx} cy={bottomCy} r={r} />
+                         <line x1={cx - r} y1={cy} x2={cx - r} y2={bottomCy} />
+                         <line x1={cx + r} y1={cy} x2={cx + r} y2={bottomCy} />
+                     </g>
+                 );
+            }
+            case Tool.ARC: {
+                const { cx, cy, r, startAngle, endAngle } = shape;
+                const bottomCy = cy + zDepth;
+                const startPoint = polarToCartesian(cx, cy, r, endAngle);
+                const endPoint = polarToCartesian(cx, cy, r, startAngle);
+                return (
+                    <g {...gProps}>
+                        <path id={shape.id} d={describeArc(cx, cy, r, startAngle, endAngle)} />
+                        <path d={describeArc(cx, bottomCy, r, startAngle, endAngle)} />
+                        <line x1={startPoint.x} y1={startPoint.y} x2={startPoint.x} y2={startPoint.y + zDepth} />
+                        <line x1={endPoint.x} y1={endPoint.y} x2={endPoint.x} y2={endPoint.y + zDepth} />
+                    </g>
+                );
+            }
+            case Tool.POLYLINE: {
+                const { points } = shape;
+                const bottomPoints = points.map(getBottomPoint);
+                return (
+                     <g {...gProps}>
+                        <polyline id={shape.id} points={points.map(p => `${p.x},${p.y}`).join(' ')} />
+                        <polyline points={bottomPoints.map(p => `${p.x},${p.y}`).join(' ')} />
+                        {points.map((p, i) => (
+                            <line key={i} x1={p.x} y1={p.y} x2={bottomPoints[i].x} y2={bottomPoints[i].y} />
+                        ))}
+                    </g>
+                );
+            }
+        }
+    }
+
+    const { transform, stroke, strokeWidth } = props;
+    const hitAreaStrokeWidth = 10 * zoomFactor;
+
     switch (shape.type) {
-      case Tool.LINE: return <line x1={shape.p1.x} y1={shape.p1.y} x2={shape.p2.x} y2={shape.p2.y} {...props} />;
-      case Tool.RECTANGLE: return <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={shape.rx} ry={shape.ry} {...props} />;
-      case Tool.CIRCLE: return <circle cx={shape.cx} cy={shape.cy} r={shape.r} {...props} />;
-      case Tool.ARC: return <path d={describeArc(shape.cx, shape.cy, shape.r, shape.startAngle, shape.endAngle)} {...props} />;
-      case Tool.POLYLINE: return <polyline points={shape.points.map(p => `${p.x},${p.y}`).join(' ')} {...props} />;
-      case Tool.IMAGE: return (
+        case Tool.LINE:
+            return (
+                <g key={shape.id} transform={transform}>
+                    <line x1={shape.p1.x} y1={shape.p1.y} x2={shape.p2.x} y2={shape.p2.y} stroke={stroke} strokeWidth={strokeWidth} style={{ pointerEvents: 'none' }} />
+                    <line id={shape.id} x1={shape.p1.x} y1={shape.p1.y} x2={shape.p2.x} y2={shape.p2.y} stroke="transparent" strokeWidth={hitAreaStrokeWidth} />
+                </g>
+            );
+        case Tool.RECTANGLE: return <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={shape.rx} ry={shape.ry} {...props} />;
+        case Tool.CIRCLE: return <circle cx={shape.cx} cy={shape.cy} r={shape.r} {...props} />;
+        case Tool.ARC: {
+            const d = describeArc(shape.cx, shape.cy, shape.r, shape.startAngle, shape.endAngle);
+            return (
+                <g key={shape.id} transform={transform}>
+                    <path d={d} stroke={stroke} strokeWidth={strokeWidth} fill="none" style={{ pointerEvents: 'none' }} />
+                    <path id={shape.id} d={d} stroke="transparent" strokeWidth={hitAreaStrokeWidth} fill="none" />
+                </g>
+            );
+        }
+        case Tool.POLYLINE: {
+            const points = shape.points.map(p => `${p.x},${p.y}`).join(' ');
+            return (
+                <g key={shape.id} transform={transform}>
+                    <polyline points={points} stroke={stroke} strokeWidth={strokeWidth} fill="none" style={{ pointerEvents: 'none' }} />
+                    <polyline id={shape.id} points={points} stroke="transparent" strokeWidth={hitAreaStrokeWidth} fill="none" />
+                </g>
+            );
+        }
+        case Tool.IMAGE: return (
             <g key={shape.id}>
                 <image href={shape.href} x={shape.x} y={shape.y} width={shape.width} height={shape.height} transform={props.transform} style={{pointerEvents: 'none'}} />
                 <rect id={shape.id} x={shape.x} y={shape.y} width={shape.width} height={shape.height} transform={props.transform} fill="transparent" stroke={isSelected ? '#3b82f6' : 'none'} strokeWidth="2" />
             </g>
         );
-      case Tool.TEXT: return <text x={shape.x} y={shape.y} {...{...props, stroke: 'none', fill: isSelected ? '#3b82f6' : color, fontSize: shape.fontSize, dominantBaseline: "middle", textAnchor: "start"}}>{shape.content}</text>;
-      default: return null;
+        case Tool.TEXT: return <text x={shape.x} y={shape.y} {...{...props, stroke: 'none', fill: isSelected ? '#3b82f6' : color, fontSize: shape.fontSize, dominantBaseline: "middle", textAnchor: "start"}}>{shape.content}</text>;
+        default: return null;
     }
   };
-
-  const clientWidth = svgRef.current?.clientWidth || 1;
-  const zoomFactor = viewBox.w / clientWidth;
 
   const gridPatternId = zoomFactor > 5 ? 'grid-coarse' : zoomFactor > 0.5 ? 'grid-medium' : 'grid-fine';
 
