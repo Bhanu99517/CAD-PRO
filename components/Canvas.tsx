@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, MouseEvent, useEffect } from 'react';
 import { Tool, Shape, Point, LineShape, RectangleShape, CircleShape, PolylineShape, Layer, ImageShape, ArcShape, TextShape, ViewMode } from '../types';
 import { getShapeCenter, polarToCartesian, getShapeBoundingBox, doBBoxesIntersect } from '../utils';
@@ -23,6 +24,7 @@ interface CanvasProps {
   setViewBox: (viewBox: { x: number; y: number; w: number; h: number }) => void;
   gridVisible: boolean;
   viewMode: ViewMode;
+  setActiveTool: (tool: Tool) => void;
 }
 
 const getInitialMousePos = (svg: SVGSVGElement, e: MouseEvent): Point => {
@@ -70,6 +72,7 @@ const Canvas: React.FC<CanvasProps> = ({
   setViewBox,
   gridVisible,
   viewMode,
+  setActiveTool,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -243,6 +246,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 setExtrusionStartPoint(null);
                 setExtrusionPreviewShapes([]);
                 setSelectedShapeIds([]);
+                setActiveTool(Tool.SELECT);
             }
             if (isPressPulling) {
                 setIsPressPulling(false);
@@ -250,6 +254,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 setPressPullStartPoint(null);
                 setPreviewShapes([]);
                 setHiddenShapeIds(new Set());
+                setActiveTool(Tool.SELECT);
             }
             setIsDrawing(false);
             setCurrentShape(null);
@@ -272,7 +277,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawing, currentShape, addShape, selectedShapeIds, deleteShapes, isExtruding, isPressPulling]);
+  }, [isDrawing, currentShape, addShape, selectedShapeIds, deleteShapes, isExtruding, isPressPulling, setActiveTool]);
   
   const getCursor = () => {
     if (isMoving || isCopying) return 'grabbing';
@@ -461,54 +466,51 @@ const Canvas: React.FC<CanvasProps> = ({
     }
 
     if (activeTool === Tool.EXTRUDE) {
-        if (!isExtruding) {
-            if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
-                const targetId = (e.target as SVGElement).id;
-                const selected = shapes.find(s => s.id === targetId);
-                if (selected && selected.type === Tool.RECTANGLE) {
-                    setIsExtruding(true);
-                    setShapeToExtrude(selected);
-                    setExtrusionStartPoint(pos);
-                    setSelectedShapeIds([selected.id]);
-                }
+        const selectedShape = shapes.find(s => s.id === selectedShapeIds[0]);
+
+        if (!isExtruding) { // First click after tool activation
+            if (selectedShape && selectedShape.type === Tool.RECTANGLE) {
+                setIsExtruding(true);
+                setShapeToExtrude(selectedShape);
+                setExtrusionStartPoint(pos);
             }
-        } else if (shapeToExtrude && extrusionStartPoint) { // Finalize extrusion
-            const height = extrusionStartPoint.y - pos.y;
-            const newShapes = createExtrusionShapes(shapeToExtrude, height);
-            if (newShapes.length > 0) {
-                extrudeShape(shapeToExtrude.id, newShapes);
+        } else { // Second click: Finalize extrusion
+            const height = (extrusionStartPoint?.y ?? pos.y) - pos.y;
+            if (shapeToExtrude) {
+                const newShapes = createExtrusionShapes(shapeToExtrude, height);
+                if (newShapes.length > 0) extrudeShape(shapeToExtrude.id, newShapes);
             }
-            // Reset state
             setIsExtruding(false);
             setShapeToExtrude(null);
             setExtrusionStartPoint(null);
             setExtrusionPreviewShapes([]);
+            setActiveTool(Tool.SELECT);
         }
         return;
     }
 
     if (activeTool === Tool.PRESS_PULL) {
-        if (e.target instanceof SVGElement && (e.target as SVGElement).id.startsWith('shape_')) {
-            const targetId = (e.target as SVGElement).id;
-            const selected = shapes.find(s => s.id === targetId);
-            if (selected && selected.type === Tool.POLYLINE) {
-                const extrudedObject = findExtrudedObject(selected as PolylineShape, shapes);
-                if (extrudedObject) {
-                    setIsPressPulling(true);
-                    setPressPullObject(extrudedObject);
-                    setPressPullStartPoint(pos);
+        const selectedShape = shapes.find(s => s.id === selectedShapeIds[0]);
+        if (selectedShape && selectedShape.type === Tool.POLYLINE) {
+            const extrudedObject = findExtrudedObject(selectedShape as PolylineShape, shapes);
+            if (extrudedObject) {
+                setIsPressPulling(true);
+                setPressPullObject(extrudedObject);
+                setPressPullStartPoint(pos);
         
-                    const idsToHide = [
-                        extrudedObject.faceA.id,
-                        ...extrudedObject.connectors.map(c => c.id)
-                    ];
-                    setHiddenShapeIds(new Set(idsToHide));
+                const idsToHide = [
+                    extrudedObject.faceA.id,
+                    ...extrudedObject.connectors.map(c => c.id)
+                ];
+                setHiddenShapeIds(new Set(idsToHide));
         
-                    setPreviewShapes([
-                        extrudedObject.faceA,
-                        ...extrudedObject.connectors
-                    ]);
-                }
+                setPreviewShapes([
+                    extrudedObject.faceA,
+                    ...extrudedObject.connectors
+                ]);
+            } else {
+                alert("The selected polyline is not a valid face for press-pull operation.");
+                setActiveTool(Tool.SELECT);
             }
         }
         return;
@@ -1004,8 +1006,16 @@ const Canvas: React.FC<CanvasProps> = ({
         setCurrentShape(null);
         setStartPoint(null);
     }
-    if (isPressPulling) { updateShapes(previewShapes); setIsPressPulling(false); setPressPullObject(null); setPressPullStartPoint(null); setPreviewShapes([]); setHiddenShapeIds(new Set()); }
-    if (activeTool === Tool.EXTRUDE && isExtruding) { return; }
+    if (isPressPulling) {
+        updateShapes(previewShapes);
+        setIsPressPulling(false);
+        setPressPullObject(null);
+        setPressPullStartPoint(null);
+        setPreviewShapes([]);
+        setHiddenShapeIds(new Set());
+        setActiveTool(Tool.SELECT);
+    }
+    if (activeTool === Tool.EXTRUDE) { return; } // Extrude is a 2-click operation, don't finalize on mouseUp of first click
     if (activeTool === Tool.MIRROR) { } 
     else if (activeTool === Tool.POLYLINE) { } 
     else if (currentShape) {
@@ -1300,8 +1310,43 @@ const Canvas: React.FC<CanvasProps> = ({
 };
 
 export default Canvas;
-const arePointsEqual = (p1: Point, p2: Point) => p1.x === p2.x && p1.y === p2.y;
-const findExtrudedObject = (face: PolylineShape, allShapes: Shape[]) => { return null; }; // Simplified
+const arePointsEqual = (p1: Point, p2: Point, tolerance = 1e-6) => Math.abs(p1.x - p2.x) < tolerance && Math.abs(p1.y - p2.y) < tolerance;
+
+const findExtrudedObject = (face: PolylineShape, allShapes: Shape[]): { faceA: PolylineShape; faceB: PolylineShape; connectors: LineShape[]; extrusionVector: Point; } | null => {
+    if (face.points.length < 3) return null;
+    const polylines = allShapes.filter(s => s.type === Tool.POLYLINE && s.id !== face.id) as PolylineShape[];
+    const lines = allShapes.filter(s => s.type === Tool.LINE) as LineShape[];
+    for (const otherFace of polylines) {
+        if (otherFace.points.length !== face.points.length) continue;
+        const dx = otherFace.points[0].x - face.points[0].x;
+        const dy = otherFace.points[0].y - face.points[0].y;
+        if (dx === 0 && dy === 0) continue;
+
+        let isMatch = true;
+        for (let i = 1; i < face.points.length; i++) {
+            if (Math.abs((otherFace.points[i].x - face.points[i].x) - dx) > 1e-6 || Math.abs((otherFace.points[i].y - face.points[i].y) - dy) > 1e-6) {
+                isMatch = false;
+                break;
+            }
+        }
+
+        if (isMatch) {
+            const connectors: LineShape[] = [];
+            for (let i = 0; i < face.points.length - 1; i++) {
+                const p1 = face.points[i];
+                const p2 = otherFace.points[i];
+                const connector = lines.find(l => (arePointsEqual(l.p1, p1) && arePointsEqual(l.p2, p2)) || (arePointsEqual(l.p1, p2) && arePointsEqual(l.p2, p1)));
+                if (connector) connectors.push(connector);
+            }
+
+            if (connectors.length === face.points.length - 1) {
+                return { faceA: face, faceB: otherFace, connectors, extrusionVector: { x: dx, y: dy } };
+            }
+        }
+    }
+    return null;
+};
+
 const getShapePoints = (shape: Shape): Point[] => {
     switch (shape.type) {
         case Tool.LINE: return [shape.p1, shape.p2];

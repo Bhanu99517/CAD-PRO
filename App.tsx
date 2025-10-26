@@ -2,6 +2,8 @@
 
 
 
+
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape, TextShape, ViewMode } from './types';
 import Header from './components/Header';
@@ -118,6 +120,38 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
+
+  const handleSetActiveTool = (tool: Tool) => {
+    if (tool === Tool.EXTRUDE) {
+        if (selectedShapeIds.length === 1) {
+            const selected = shapes.find(s => s.id === selectedShapeIds[0]);
+            if (selected && selected.type === Tool.RECTANGLE) {
+                setActiveTool(Tool.EXTRUDE);
+            } else {
+                alert('Please select a single rectangle to extrude.');
+            }
+        } else {
+            alert('Please select one rectangle to extrude.');
+        }
+        return;
+    }
+    
+    if (tool === Tool.PRESS_PULL) {
+        if (selectedShapeIds.length === 1) {
+            const selected = shapes.find(s => s.id === selectedShapeIds[0]);
+            if (selected && selected.type === Tool.POLYLINE) {
+                setActiveTool(Tool.PRESS_PULL);
+            } else {
+                alert('Please select a single polyline face to press-pull.');
+            }
+        } else {
+            alert('Please select one polyline face to press-pull.');
+        }
+        return;
+    }
+    
+    setActiveTool(tool);
+  };
 
   const addLayer = useCallback(() => {
     const newLayer: Layer = {
@@ -450,7 +484,7 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen w-screen bg-black text-white font-sans overflow-hidden">
       <Header 
         activeTool={activeTool} 
-        setActiveTool={setActiveTool} 
+        setActiveTool={handleSetActiveTool} 
         undo={undo}
         redo={redo}
         canUndo={canUndo}
@@ -486,6 +520,7 @@ const App: React.FC = () => {
             setViewBox={setViewBox}
             gridVisible={gridVisible}
             viewMode={viewMode}
+            setActiveTool={setActiveTool}
           />
         </main>
         
