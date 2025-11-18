@@ -1,4 +1,5 @@
-import { Shape, Tool, RectangleShape, ImageShape, CircleShape, ArcShape, Point, LineShape, PolylineShape, TextShape } from './types';
+
+import { Shape, Tool, RectangleShape, ImageShape, CircleShape, ArcShape, Point, LineShape, PolylineShape, TextShape, EllipseShape, TableShape } from './types';
 
 export const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number): Point => {
     const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
@@ -8,18 +9,78 @@ export const polarToCartesian = (centerX: number, centerY: number, radius: numbe
     };
 };
 
+export const cartesianToPolar = (centerX: number, centerY: number, x: number, y: number): { r: number, angle: number } => {
+    const dx = x - centerX;
+    const dy = y - centerY;
+    return {
+        r: Math.sqrt(dx * dx + dy * dy),
+        angle: Math.atan2(dy, dx) * (180 / Math.PI) + 90
+    };
+};
+
+export const getDistance = (p1: Point, p2: Point): number => {
+    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+};
+
+export const getAngle = (p1: Point, p2: Point, p3: Point): number => {
+    const a = getDistance(p2, p3);
+    const b = getDistance(p1, p3);
+    const c = getDistance(p1, p2);
+    return Math.acos((b * b + c * c - a * a) / (2 * b * c)) * (180 / Math.PI);
+};
+
+export const calculatePolygonArea = (points: Point[]): number => {
+    let area = 0;
+    for (let i = 0; i < points.length; i++) {
+        let j = (i + 1) % points.length;
+        area += points[i].x * points[j].y;
+        area -= points[j].x * points[i].y;
+    }
+    return Math.abs(area / 2);
+};
+
+export const generatePolygonPoints = (cx: number, cy: number, r: number, sides: number): Point[] => {
+    const points: Point[] = [];
+    for (let i = 0; i < sides; i++) {
+        const angle = (i * 360) / sides;
+        points.push(polarToCartesian(cx, cy, r, angle));
+    }
+    return points;
+};
+
+// Basic line intersection (infinite lines)
+export const getIntersection = (p1: Point, p2: Point, p3: Point, p4: Point): Point | null => {
+    const d = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+    if (d === 0) return null;
+    const t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / d;
+    const u = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / d;
+    // Check if intersection is within segments
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+         return {
+            x: p1.x + t * (p2.x - p1.x),
+            y: p1.y + t * (p2.y - p1.y)
+        };
+    }
+    return null;
+};
+
 export const getShapeCenter = (shape: Shape): Point => {
     switch (shape.type) {
         case Tool.RECTANGLE:
         case Tool.IMAGE:
-            return { x: (shape as RectangleShape | ImageShape).x + (shape as RectangleShape | ImageShape).width / 2, y: (shape as RectangleShape | ImageShape).y + (shape as RectangleShape | ImageShape).height / 2 };
+        case Tool.TABLE:
+            return { x: (shape as RectangleShape | ImageShape | TableShape).x + (shape as RectangleShape | ImageShape | TableShape).width / 2, y: (shape as RectangleShape | ImageShape | TableShape).y + (shape as RectangleShape | ImageShape | TableShape).height / 2 };
         case Tool.CIRCLE:
         case Tool.ARC:
             return { x: (shape as CircleShape | ArcShape).cx, y: (shape as CircleShape | ArcShape).cy };
+        case Tool.ELLIPSE:
+             return { x: (shape as EllipseShape).cx, y: (shape as EllipseShape).cy };
         case Tool.LINE:
             const line = shape as LineShape;
             return { x: (line.p1.x + line.p2.x) / 2, y: (line.p1.y + line.p2.y) / 2 };
         case Tool.POLYLINE:
+        case Tool.POLYGON:
+        case Tool.FREEHAND:
             const poly = shape as PolylineShape;
             if (!poly.points || poly.points.length === 0) return { x: 0, y: 0 };
             const xs = poly.points.map(p => p.x);
@@ -31,7 +92,6 @@ export const getShapeCenter = (shape: Shape): Point => {
             return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
         case Tool.TEXT:
             const text = shape as TextShape;
-            // Use the insertion point as the center for rotation/scaling transforms
             return { x: text.x, y: text.y };
         default:
             return { x: 0, y: 0 };
@@ -59,10 +119,13 @@ export const getShapeBoundingBox = (shape: Shape): { minX: number, minY: number,
             unrotatedPoints = [shape.p1, shape.p2];
             break;
         case Tool.POLYLINE:
+        case Tool.POLYGON:
+        case Tool.FREEHAND:
             unrotatedPoints = shape.points;
             break;
         case Tool.RECTANGLE:
         case Tool.IMAGE:
+        case Tool.TABLE:
             unrotatedPoints = [
                 { x: shape.x, y: shape.y },
                 { x: shape.x + shape.width, y: shape.y },
@@ -86,6 +149,13 @@ export const getShapeBoundingBox = (shape: Shape): { minX: number, minY: number,
                 minY: shape.cy - shape.r,
                 maxX: shape.cx + shape.r,
                 maxY: shape.cy + shape.r,
+            };
+        case Tool.ELLIPSE:
+             return {
+                minX: shape.cx - shape.rx,
+                minY: shape.cy - shape.ry,
+                maxX: shape.cx + shape.rx,
+                maxY: shape.cy + shape.ry,
             };
         case Tool.ARC:
             const { cx, cy, r, startAngle, endAngle } = shape;
