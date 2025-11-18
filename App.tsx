@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Tool, Shape, Point, Layer, ImageShape, LineShape, CircleShape, RectangleShape, ArcShape, PolylineShape, TextShape, ViewMode } from './types';
 import Header from './components/Header';
@@ -481,7 +476,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-black text-white font-sans overflow-hidden">
+    <div className="flex flex-col h-screen w-screen bg-[#1c1c1c] text-white font-sans overflow-hidden">
       <Header 
         activeTool={activeTool} 
         setActiveTool={handleSetActiveTool} 
@@ -499,7 +494,7 @@ const App: React.FC = () => {
         setDesktopPanel={setDesktopPanel}
       />
       <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 relative bg-black">
+        <main className="flex-1 relative bg-[#101010] border-t border-l border-gray-700">
           <Canvas
             activeTool={activeTool}
             shapes={shapes}
@@ -524,8 +519,8 @@ const App: React.FC = () => {
           />
         </main>
         
-        {/* Desktop Sidebar */}
-        <aside className="w-64 flex-col bg-gray-800 border-l border-gray-700 hidden md:flex">
+        {/* Desktop Sidebar - styled to look like docked panels */}
+        <aside className="w-64 flex-col bg-[#2b2b2b] border-l border-gray-700 hidden md:flex">
             {desktopPanel === 'PROPERTIES_LAYERS' ? (
                 <>
                     <PropertiesPanel

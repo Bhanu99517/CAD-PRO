@@ -25,19 +25,37 @@ import { LayersIcon } from './icons/LayersIcon';
 import { EraseIcon } from './icons/EraseIcon';
 import { SlidersIcon } from './icons/SlidersIcon';
 import { ExtrudeIcon } from './icons/ExtrudeIcon';
-import { BoxIcon } from './icons/BoxIcon';
-import { SmoothObjectIcon } from '../SmoothObjectIcon';
-import { MeshIcon } from './icons/MeshIcon';
-import { SolidEditingIcon } from './icons/SolidEditingIcon';
-import { SectionPlaneIcon } from './icons/SectionPlaneIcon';
 import { PresspullIcon } from './icons/PresspullIcon';
 import { OffsetIcon } from './icons/OffsetIcon';
 import { ZoomExtentsIcon } from './icons/ZoomExtentsIcon';
 import { SaveIcon } from './icons/SaveIcon';
 import { FolderOpenIcon } from './icons/FolderOpenIcon';
-import { ViewModeIcon } from './icons/ViewModeIcon';
 import { ZooAiIcon } from './icons/ZooAiIcon';
 
+// Simple SVG placeholders for icons not in the original set but requested in design
+const PrinterIcon: React.FC<{ className: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="6 9 6 2 18 2 18 9"></polyline>
+    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+    <rect x="6" y="14" width="12" height="8"></rect>
+  </svg>
+);
+
+const FilePlusIcon: React.FC<{ className: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+    <polyline points="14 2 14 8 20 8"></polyline>
+    <line x1="12" y1="11" x2="12" y2="17"></line>
+    <line x1="9" y1="14" x2="15" y2="14"></line>
+  </svg>
+);
+
+const GearIcon: React.FC<{ className: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+);
 
 const UndoIcon: React.FC<{ className: string }> = ({ className }) => (
   <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -52,7 +70,6 @@ const RedoIcon: React.FC<{ className: string }> = ({ className }) => (
     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L21 13"/>
   </svg>
 );
-
 
 interface HeaderProps {
   activeTool: Tool;
@@ -71,262 +88,238 @@ interface HeaderProps {
   setDesktopPanel: (panel: 'PROPERTIES_LAYERS' | 'ZOO_AI') => void;
 }
 
-const ToolButton: React.FC<{
-  Icon: React.FC<{ className: string }>;
-  label: string;
-  isActive: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  large?: boolean;
-}> = ({ Icon, label, isActive, onClick, disabled = false, large = false }) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    title={disabled ? `${label} (Not available)` : label}
-    className={`flex flex-col items-center justify-center p-1 rounded-md transition-colors duration-150 ${
-        large ? 'w-20 h-20' : 'w-16 h-16'
-    } ${
-      isActive
-        ? 'bg-blue-600 text-white'
-        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-    } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-  >
-    <Icon className={`${large ? 'w-8 h-8' : 'w-6 h-6'} mb-1`} />
-    <span className="text-xs text-center leading-tight">{label}</span>
-  </button>
-);
+// --- Components ---
 
-const SmallToolButton: React.FC<{
-  Icon: React.FC<{ className: string }>;
-  label: string;
-  onClick: () => void;
-  isActive?: boolean;
-  disabled?: boolean;
-}> = ({ Icon, label, onClick, isActive = false, disabled = false }) => (
-    <button
-        onClick={onClick}
-        disabled={disabled}
-        title={disabled ? `${label} (Coming Soon)` : label}
-        className={`flex items-center space-x-2 p-1 w-full rounded-md transition-colors duration-150 ${
-            isActive ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-    >
-        <Icon className="w-5 h-5" />
-        <span className="text-xs">{label}</span>
-    </button>
-);
+const RibbonButton: React.FC<{
+    Icon: React.FC<{ className: string }>;
+    label: string;
+    onClick: () => void;
+    isActive?: boolean;
+    disabled?: boolean;
+    size?: 'large' | 'small';
+}> = ({ Icon, label, onClick, isActive, disabled, size = 'small' }) => {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            title={label}
+            className={`
+                flex flex-col items-center justify-center rounded hover:bg-[#4c4c4c] hover:shadow-inner transition-colors
+                ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+                ${isActive ? 'bg-[#404c5e] text-blue-300 border border-blue-500/30' : 'text-gray-200'}
+                ${size === 'large' ? 'h-[68px] min-w-[50px] px-2' : 'h-[22px] w-full flex-row justify-start px-1 space-x-2'}
+            `}
+        >
+            <Icon className={size === 'large' ? 'w-8 h-8 mb-1' : 'w-4 h-4'} />
+            <span className={`text-[10px] whitespace-nowrap ${size === 'large' ? 'mt-1' : ''}`}>{label}</span>
+        </button>
+    );
+};
 
-
-const ToolGroup: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className }) => (
-    <div className={`flex flex-col justify-start border-r border-gray-700 px-1 py-1 h-full ${className}`}>
-        <div className="flex-grow flex items-center">
+const RibbonGroup: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+    <div className="flex flex-col h-full border-r border-gray-600/50 px-2 relative group min-w-max">
+        <div className="flex flex-row h-full pb-4 space-x-1">
             {children}
         </div>
-        <div className="text-xs text-gray-400 mt-1 text-center">{title}</div>
+        <div className="absolute bottom-0 left-0 w-full text-center bg-[#3a3a3a] py-[2px]">
+            <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold group-hover:text-gray-200">{title}</span>
+        </div>
     </div>
 );
 
-const complexToolAlert = (toolName: string) => {
-    alert(`${toolName} functionality is not yet implemented through interactive controls. Please use the command line. For example: "create a 3x4 array of the selected object with 50px spacing"`);
-};
+const QuickAccessButton: React.FC<{ Icon: React.FC<{ className: string }>; onClick: () => void; title: string }> = ({ Icon, onClick, title }) => (
+    <button onClick={onClick} title={title} className="p-1 rounded hover:bg-gray-600 text-gray-300 mx-[1px]">
+        <Icon className="w-4 h-4" />
+    </button>
+);
 
-const modelingToolAlert = (toolName: string) => {
-    alert(`${toolName} functionality is available via the command line. Please select a shape and try a command like: "extrude selected shape by 50"`);
-};
+const MenuLink: React.FC<{ label: string }> = ({ label }) => (
+    <button className="px-2 py-1 text-xs text-gray-300 hover:bg-gray-700 rounded-sm cursor-default">
+        {label}
+    </button>
+);
 
-const threeDToolAlert = (toolName: string) => {
-    alert(`${toolName} is a 3D modeling tool and is not yet implemented in this 2D version.`);
-};
+const TabButton: React.FC<{ label: string; active: boolean; onClick: () => void }> = ({ label, active, onClick }) => (
+    <button 
+        onClick={onClick}
+        className={`
+            px-4 py-1 text-sm rounded-t-sm border-r border-gray-700 transition-colors relative top-[1px]
+            ${active 
+                ? 'bg-[#333333] text-white font-medium border-t-2 border-t-blue-500 z-10' 
+                : 'bg-[#2b2b2b] text-gray-400 hover:bg-[#333333] hover:text-gray-200'}
+        `}
+    >
+        {label}
+    </button>
+);
 
-const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo, setMobilePanel, onSave, onLoad, onZoomExtents, viewMode, setViewMode, desktopPanel, setDesktopPanel }) => {
-  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
-
-  const handleViewChange = (mode: ViewMode) => {
-      setViewMode(mode);
-      setIsViewMenuOpen(false);
-  }
+const Header: React.FC<HeaderProps> = ({ activeTool, setActiveTool, undo, redo, canUndo, canRedo, onSave, onLoad, desktopPanel, setDesktopPanel }) => {
+  const [activeTab, setActiveTab] = useState<'Home' | 'Insert' | 'Annotate' | 'Parametric' | 'View' | 'Manage' | 'Output'>('Home');
 
   return (
-    <header className="bg-gray-800 border-b border-gray-700 flex flex-col shrink-0">
-        <div className="flex items-center px-2 md:px-4 h-10 md:h-8">
-            <div className="text-xl font-bold text-red-500 mr-4 md:mr-6">A</div>
-            <div className="hidden md:flex space-x-4 text-sm">
-                <button className="text-white bg-gray-700 px-3 py-1 rounded-t-sm">Home</button>
-                <button className="text-gray-400 hover:text-white">Solid</button>
-                <button className="text-gray-400 hover:text-white">Surface</button>
-                <button className="text-gray-400 hover:text-white">Mesh</button>
-                <button className="text-gray-400 hover:text-white">Visualize</button>
-                <button className="text-gray-400 hover:text-white">Parametric</button>
-                <button className="text-gray-400 hover:text-white">Insert</button>
-                <button className="text-gray-400 hover:text-white">Annotate</button>
-                <button className="text-gray-400 hover:text-white">View</button>
-                <button className="text-gray-400 hover:text-white">Manage</button>
-                <button className="text-gray-400 hover:text-white">Output</button>
-            </div>
-            <div className="flex-grow"></div>
-            {/* Mobile Panel Toggles */}
-            <div className="flex md:hidden items-center space-x-2">
-                 <button onClick={() => setMobilePanel('ZOO_AI')} className="p-2 rounded-md hover:bg-gray-700 text-gray-300" aria-label="Toggle Zoo AI Panel"><ZooAiIcon className="w-6 h-6" /></button>
-                 <button onClick={() => setMobilePanel('LAYERS')} className="p-2 rounded-md hover:bg-gray-700 text-gray-300" aria-label="Toggle Layers Panel"><LayersIcon className="w-6 h-6" /></button>
-                 <button onClick={() => setMobilePanel('PROPERTIES')} className="p-2 rounded-md hover:bg-gray-700 text-gray-300" aria-label="Toggle Properties Panel"><SlidersIcon className="w-6 h-6" /></button>
-            </div>
-        </div>
-        
-        <div className="hidden md:flex bg-gray-800 h-[110px] items-stretch p-1">
-            <ToolGroup title="Modeling">
-                <div className="flex items-start">
-                    <ToolButton Icon={BoxIcon} label="Box" onClick={() => threeDToolAlert('Box')} isActive={false} large/>
-                     <div className="flex flex-col space-y-1 ml-1">
-                        <SmallToolButton Icon={ExtrudeIcon} label="Extrude" isActive={activeTool === Tool.EXTRUDE} onClick={() => setActiveTool(Tool.EXTRUDE)} />
-                        <SmallToolButton Icon={PresspullIcon} label="Press-pull" isActive={activeTool === Tool.PRESS_PULL} onClick={() => setActiveTool(Tool.PRESS_PULL)} />
-                        <SmallToolButton Icon={SmoothObjectIcon} label="Smooth Object" onClick={() => threeDToolAlert('Smooth Object')} />
-                    </div>
+    <div className="flex flex-col w-full shrink-0 select-none">
+        {/* 1. Quick Access Toolbar */}
+        <div className="h-8 bg-[#1c1c1c] flex items-center px-2 border-b border-gray-800 justify-between">
+            <div className="flex items-center">
+                {/* App Icon */}
+                <div className="w-6 h-6 bg-red-700 rounded-sm flex items-center justify-center text-white font-bold mr-3 cursor-pointer shadow-sm">
+                    A
                 </div>
-            </ToolGroup>
+                
+                <div className="h-4 w-[1px] bg-gray-600 mx-1"></div>
+                
+                <QuickAccessButton Icon={FilePlusIcon} onClick={() => alert('New File')} title="New" />
+                <QuickAccessButton Icon={FolderOpenIcon} onClick={onLoad} title="Open" />
+                <QuickAccessButton Icon={SaveIcon} onClick={onSave} title="Save" />
+                <QuickAccessButton Icon={PrinterIcon} onClick={() => alert('Print')} title="Print" />
+                
+                <div className="h-4 w-[1px] bg-gray-600 mx-1"></div>
 
-            <ToolGroup title="Mesh">
-                <ToolButton Icon={MeshIcon} label="Mesh Tools" onClick={() => threeDToolAlert('Mesh Tools')} isActive={false} />
-            </ToolGroup>
-
-            <ToolGroup title="Solid Editing">
-                <ToolButton Icon={SolidEditingIcon} label="Boolean Ops" onClick={() => threeDToolAlert('Solid Editing Tools')} isActive={false} />
-            </ToolGroup>
+                <QuickAccessButton Icon={UndoIcon} onClick={undo} title="Undo" />
+                <QuickAccessButton Icon={RedoIcon} onClick={redo} title="Redo" />
+                
+                <div className="ml-4 flex items-center bg-[#2a2a2a] border border-gray-700 rounded px-2 py-0.5 cursor-pointer hover:border-gray-500">
+                    <GearIcon className="w-3 h-3 text-gray-400 mr-2" />
+                    <span className="text-xs text-gray-300 mr-4">Drafting & Annotation</span>
+                    <span className="text-[8px] text-gray-500">▼</span>
+                </div>
+            </div>
             
-             <ToolGroup title="Draw">
-                <div className="flex items-start">
-                    <div className="flex flex-col items-center">
-                        <ToolButton Icon={LineIcon} label="Line" isActive={activeTool === Tool.LINE} onClick={() => setActiveTool(Tool.LINE)} large />
-                    </div>
-                    <div className="flex flex-col space-y-1 ml-1">
-                        <SmallToolButton Icon={PolylineIcon} label="Polyline" isActive={activeTool === Tool.POLYLINE} onClick={() => setActiveTool(Tool.POLYLINE)} />
-                        <SmallToolButton Icon={CircleIcon} label="Circle" isActive={activeTool === Tool.CIRCLE} onClick={() => setActiveTool(Tool.CIRCLE)} />
-                        <SmallToolButton Icon={ArcIcon} label="Arc" isActive={activeTool === Tool.ARC} onClick={() => setActiveTool(Tool.ARC)} />
-                    </div>
-                     <div className="flex flex-col space-y-1 ml-1">
-                        <SmallToolButton Icon={RectangleIcon} label="Rectangle" isActive={activeTool === Tool.RECTANGLE} onClick={() => setActiveTool(Tool.RECTANGLE)} />
-                    </div>
+            {/* Right side QAT items */}
+            <div className="flex items-center space-x-2 text-xs text-gray-400 mr-2">
+                <div className="bg-[#2a2a2a] px-2 py-0.5 rounded flex items-center border border-gray-700">
+                    <span className="mr-2">Layer: 0</span>
+                    <span className="text-[8px]">▼</span>
                 </div>
-            </ToolGroup>
-
-            <ToolGroup title="Modify">
-                <div className="grid grid-cols-4 gap-1">
-                    <ToolButton Icon={MoveIcon} label="Move" isActive={activeTool === Tool.MOVE} onClick={() => setActiveTool(Tool.MOVE)} />
-                    <ToolButton Icon={CopyIcon} label="Copy" isActive={activeTool === Tool.COPY} onClick={() => setActiveTool(Tool.COPY)} />
-                    <ToolButton Icon={StretchIcon} label="Stretch" onClick={() => complexToolAlert('Stretch')} isActive={false} />
-                    <ToolButton Icon={RotateIcon} label="Rotate" isActive={activeTool === Tool.ROTATE} onClick={() => setActiveTool(Tool.ROTATE)} />
-                    <ToolButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
-                    <ToolButton Icon={ScaleIcon} label="Scale" isActive={activeTool === Tool.SCALE} onClick={() => setActiveTool(Tool.SCALE)} />
-                    <ToolButton Icon={TrimIcon} label="Trim" onClick={() => complexToolAlert('Trim')} isActive={false} />
-                    <ToolButton Icon={OffsetIcon} label="Offset" onClick={() => complexToolAlert('Offset')} isActive={false} />
-                    <ToolButton Icon={FilletIcon} label="Fillet" isActive={activeTool === Tool.FILLET} onClick={() => setActiveTool(Tool.FILLET)} />
-                    <ToolButton Icon={ArrayIcon} label="Array" onClick={() => complexToolAlert('Array')} isActive={false} />
-                    <ToolButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
-                </div>
-            </ToolGroup>
-
-            <ToolGroup title="Section">
-                <ToolButton Icon={SectionPlaneIcon} label="Section Plane" onClick={() => threeDToolAlert('Section Plane')} isActive={false} large />
-            </ToolGroup>
-
-             <ToolGroup title="Annotation">
-                <div className="flex items-start">
-                    <div className="flex flex-col items-center">
-                        <ToolButton Icon={TextIcon} label="Text" isActive={activeTool === Tool.TEXT} onClick={() => setActiveTool(Tool.TEXT)} large />
-                    </div>
-                    <div className="flex flex-col space-y-1 ml-1">
-                        <SmallToolButton Icon={DimensionIcon} label="Dimension" onClick={() => complexToolAlert('Dimension')} />
-                        <SmallToolButton Icon={LeaderIcon} label="Leader" onClick={() => complexToolAlert('Leader')} />
-                        <SmallToolButton Icon={TableIcon} label="Table" onClick={() => complexToolAlert('Table')} />
-                    </div>
-                </div>
-            </ToolGroup>
-
-             <ToolGroup title="Layers">
-                <div className="flex items-start">
-                    <ToolButton Icon={LayersIcon} label="Layer Properties" onClick={() => alert('Layer properties can be managed in the Layers panel on the right.')} isActive={false} large />
-                </div>
-            </ToolGroup>
-            
-             <ToolGroup title="AI">
-                <ToolButton
-                    Icon={ZooAiIcon}
-                    label="Zoo AI"
-                    isActive={desktopPanel === 'ZOO_AI'}
-                    onClick={() => setDesktopPanel(desktopPanel === 'ZOO_AI' ? 'PROPERTIES_LAYERS' : 'ZOO_AI')}
-                    large
-                />
-            </ToolGroup>
-
-             <div className="flex-grow"></div>
-
-            <ToolGroup title="File">
-                 <div className="flex flex-col space-y-2">
-                    <ToolButton Icon={SaveIcon} label="Save" isActive={false} onClick={onSave} />
-                    <ToolButton Icon={FolderOpenIcon} label="Load" isActive={false} onClick={onLoad} />
-                 </div>
-            </ToolGroup>
-
-             <ToolGroup title="View" className="relative">
-                 <div className="flex flex-col space-y-2">
-                    <ToolButton Icon={CursorIcon} label="Select" isActive={activeTool === Tool.SELECT} onClick={() => setActiveTool(Tool.SELECT)} />
-                    <ToolButton Icon={HandIcon} label="Pan" isActive={activeTool === Tool.PAN} onClick={() => setActiveTool(Tool.PAN)} />
-                 </div>
-                 <div className="flex flex-col space-y-2 ml-1">
-                    <ToolButton Icon={ZoomExtentsIcon} label="Zoom Extents" isActive={false} onClick={onZoomExtents} />
-                    <div className="relative">
-                        <ToolButton Icon={ViewModeIcon} label={viewMode} isActive={isViewMenuOpen} onClick={() => setIsViewMenuOpen(prev => !prev)} />
-                        {isViewMenuOpen && (
-                            <div className="absolute top-full right-0 mt-1 bg-gray-700 rounded-md shadow-lg z-10 w-36 p-1">
-                                <button onClick={() => handleViewChange('TOP')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Top</button>
-                                <button onClick={() => handleViewChange('BOTTOM')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Bottom</button>
-                                <button onClick={() => handleViewChange('FRONT')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Front</button>
-                                <button onClick={() => handleViewChange('BACK')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Back</button>
-                                <button onClick={() => handleViewChange('LEFT')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Left Side</button>
-                                <button onClick={() => handleViewChange('RIGHT')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Right Side</button>
-                                <div className="my-1 border-t border-gray-600"></div>
-                                <button onClick={() => handleViewChange('ISOMETRIC')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Isometric</button>
-                                <button onClick={() => handleViewChange('PERSPECTIVE')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Perspective</button>
-                                <div className="my-1 border-t border-gray-600"></div>
-                                <button onClick={() => handleViewChange('TOP')} className="w-full text-left text-sm p-2 rounded hover:bg-gray-600 text-gray-200">Orthographic</button>
-                                <button disabled className="w-full text-left text-sm p-2 rounded text-gray-500 cursor-not-allowed">Custom View</button>
-                            </div>
-                        )}
-                    </div>
-                 </div>
-             </ToolGroup>
-
-             <ToolGroup title="History">
-                 <div className="flex flex-col space-y-2">
-                    <ToolButton Icon={UndoIcon} label="Undo" isActive={false} onClick={undo} disabled={!canUndo} />
-                    <ToolButton Icon={RedoIcon} label="Redo" isActive={false} onClick={redo} disabled={!canRedo} />
-                 </div>
-             </ToolGroup>
-        </div>
-
-        {/* Mobile Toolbar */}
-        <div className="md:hidden flex items-center bg-gray-800 p-1 overflow-x-auto">
-            <div className="flex space-x-1">
-                <ToolButton Icon={CursorIcon} label="Select" isActive={activeTool === Tool.SELECT} onClick={() => setActiveTool(Tool.SELECT)} />
-                <ToolButton Icon={HandIcon} label="Pan" isActive={activeTool === Tool.PAN} onClick={() => setActiveTool(Tool.PAN)} />
-                <div className="border-l border-gray-700 mx-1"></div>
-                <ToolButton Icon={LineIcon} label="Line" isActive={activeTool === Tool.LINE} onClick={() => setActiveTool(Tool.LINE)} />
-                <ToolButton Icon={PolylineIcon} label="Polyline" isActive={activeTool === Tool.POLYLINE} onClick={() => setActiveTool(Tool.POLYLINE)} />
-                <ToolButton Icon={RectangleIcon} label="Rectangle" isActive={activeTool === Tool.RECTANGLE} onClick={() => setActiveTool(Tool.RECTANGLE)} />
-                <ToolButton Icon={CircleIcon} label="Circle" isActive={activeTool === Tool.CIRCLE} onClick={() => setActiveTool(Tool.CIRCLE)} />
-                <ToolButton Icon={ArcIcon} label="Arc" isActive={activeTool === Tool.ARC} onClick={() => setActiveTool(Tool.ARC)} />
-                <div className="border-l border-gray-700 mx-1"></div>
-                <ToolButton Icon={MoveIcon} label="Move" isActive={activeTool === Tool.MOVE} onClick={() => setActiveTool(Tool.MOVE)} />
-                <ToolButton Icon={CopyIcon} label="Copy" isActive={activeTool === Tool.COPY} onClick={() => setActiveTool(Tool.COPY)} />
-                <ToolButton Icon={RotateIcon} label="Rotate" isActive={activeTool === Tool.ROTATE} onClick={() => setActiveTool(Tool.ROTATE)} />
-                <ToolButton Icon={ScaleIcon} label="Scale" isActive={activeTool === Tool.SCALE} onClick={() => setActiveTool(Tool.SCALE)} />
-                <ToolButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
-                <ToolButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
-                <div className="border-l border-gray-700 mx-1"></div>
-                <ToolButton Icon={UndoIcon} label="Undo" isActive={false} onClick={undo} disabled={!canUndo} />
-                <ToolButton Icon={RedoIcon} label="Redo" isActive={false} onClick={redo} disabled={!canRedo} />
             </div>
         </div>
-    </header>
+
+        {/* 2. Menu Bar */}
+        <div className="h-6 bg-[#2b2b2b] flex items-center px-2 border-b border-gray-700 shadow-sm z-10">
+            <MenuLink label="File" />
+            <MenuLink label="Edit" />
+            <MenuLink label="View" />
+            <MenuLink label="Insert" />
+            <MenuLink label="Format" />
+            <MenuLink label="Tools" />
+            <MenuLink label="Draw" />
+            <MenuLink label="Dimension" />
+            <MenuLink label="Modify" />
+            <MenuLink label="Window" />
+            <MenuLink label="Help" />
+        </div>
+
+        {/* 3. Ribbon Tabs */}
+        <div className="bg-[#2b2b2b] px-2 flex items-end border-b border-gray-600 pt-1">
+            <TabButton label="Home" active={activeTab === 'Home'} onClick={() => setActiveTab('Home')} />
+            <TabButton label="Insert" active={activeTab === 'Insert'} onClick={() => setActiveTab('Insert')} />
+            <TabButton label="Annotate" active={activeTab === 'Annotate'} onClick={() => setActiveTab('Annotate')} />
+            <TabButton label="Parametric" active={activeTab === 'Parametric'} onClick={() => setActiveTab('Parametric')} />
+            <TabButton label="View" active={activeTab === 'View'} onClick={() => setActiveTab('View')} />
+            <TabButton label="Manage" active={activeTab === 'Manage'} onClick={() => setActiveTab('Manage')} />
+            <TabButton label="Output" active={activeTab === 'Output'} onClick={() => setActiveTab('Output')} />
+        </div>
+
+        {/* 4. Ribbon Panel Area */}
+        <div className="h-24 bg-[#333333] border-b border-gray-800 flex px-2 py-1 overflow-x-auto shadow-md">
+            {activeTab === 'Home' && (
+                <>
+                    {/* Draw Group */}
+                    <RibbonGroup title="Draw">
+                        {/* Big buttons column */}
+                        <div className="flex flex-col space-y-1">
+                             <RibbonButton Icon={LineIcon} label="Line" size="large" isActive={activeTool === Tool.LINE} onClick={() => setActiveTool(Tool.LINE)} />
+                        </div>
+                         <div className="flex flex-col space-y-1">
+                             <RibbonButton Icon={PolylineIcon} label="Polyline" size="large" isActive={activeTool === Tool.POLYLINE} onClick={() => setActiveTool(Tool.POLYLINE)} />
+                        </div>
+                         <div className="flex flex-col space-y-1">
+                             <RibbonButton Icon={CircleIcon} label="Circle" size="large" isActive={activeTool === Tool.CIRCLE} onClick={() => setActiveTool(Tool.CIRCLE)} />
+                        </div>
+                        {/* Small buttons column */}
+                        <div className="flex flex-col space-y-[2px] justify-start min-w-[60px]">
+                            <RibbonButton Icon={ArcIcon} label="Arc" isActive={activeTool === Tool.ARC} onClick={() => setActiveTool(Tool.ARC)} />
+                            <RibbonButton Icon={RectangleIcon} label="Rectangle" isActive={activeTool === Tool.RECTANGLE} onClick={() => setActiveTool(Tool.RECTANGLE)} />
+                            <RibbonButton Icon={CircleIcon} label="Ellipse" onClick={() => alert('Ellipse tool coming soon')} disabled />
+                        </div>
+                        <div className="flex flex-col space-y-[2px] justify-start min-w-[60px]">
+                            <RibbonButton Icon={CursorIcon} label="Hatch" onClick={() => alert('Hatch tool coming soon')} disabled />
+                        </div>
+                    </RibbonGroup>
+
+                    {/* Modify Group */}
+                    <RibbonGroup title="Modify">
+                         <div className="flex flex-col space-y-[2px]">
+                            <RibbonButton Icon={MoveIcon} label="Move" isActive={activeTool === Tool.MOVE} onClick={() => setActiveTool(Tool.MOVE)} />
+                            <RibbonButton Icon={RotateIcon} label="Rotate" isActive={activeTool === Tool.ROTATE} onClick={() => setActiveTool(Tool.ROTATE)} />
+                            <RibbonButton Icon={TrimIcon} label="Trim" onClick={() => alert('Trim via command line')} />
+                         </div>
+                         <div className="flex flex-col space-y-[2px]">
+                            <RibbonButton Icon={CopyIcon} label="Copy" isActive={activeTool === Tool.COPY} onClick={() => setActiveTool(Tool.COPY)} />
+                            <RibbonButton Icon={MirrorIcon} label="Mirror" isActive={activeTool === Tool.MIRROR} onClick={() => setActiveTool(Tool.MIRROR)} />
+                            <RibbonButton Icon={FilletIcon} label="Fillet" isActive={activeTool === Tool.FILLET} onClick={() => setActiveTool(Tool.FILLET)} />
+                         </div>
+                         <div className="flex flex-col space-y-[2px]">
+                            <RibbonButton Icon={StretchIcon} label="Stretch" onClick={() => alert('Stretch via command line')} />
+                            <RibbonButton Icon={ScaleIcon} label="Scale" isActive={activeTool === Tool.SCALE} onClick={() => setActiveTool(Tool.SCALE)} />
+                            <RibbonButton Icon={ArrayIcon} label="Array" onClick={() => alert('Array via command line')} />
+                         </div>
+                         <div className="flex flex-col space-y-[2px]">
+                            <RibbonButton Icon={EraseIcon} label="Erase" isActive={activeTool === Tool.ERASE} onClick={() => setActiveTool(Tool.ERASE)} />
+                            <RibbonButton Icon={OffsetIcon} label="Offset" onClick={() => alert('Offset via command line')} />
+                         </div>
+                    </RibbonGroup>
+
+                    {/* Annotation Group */}
+                    <RibbonGroup title="Annotation">
+                        <div className="flex flex-col space-y-1">
+                            <RibbonButton Icon={TextIcon} label="Text" size="large" isActive={activeTool === Tool.TEXT} onClick={() => setActiveTool(Tool.TEXT)} />
+                        </div>
+                        <div className="flex flex-col space-y-[2px]">
+                            <RibbonButton Icon={DimensionIcon} label="Dimension" onClick={() => alert('Dimensions coming soon')} />
+                            <RibbonButton Icon={LeaderIcon} label="Leader" onClick={() => alert('Leaders coming soon')} />
+                            <RibbonButton Icon={TableIcon} label="Table" onClick={() => alert('Tables coming soon')} />
+                        </div>
+                    </RibbonGroup>
+
+                    {/* Layers Group */}
+                    <RibbonGroup title="Layers">
+                         <div className="flex flex-col space-y-1">
+                            <RibbonButton Icon={LayersIcon} label="Layer Props" size="large" onClick={() => setDesktopPanel('PROPERTIES_LAYERS')} />
+                        </div>
+                    </RibbonGroup>
+
+                     {/* 3D / Modeling Group (Simplified) */}
+                     <RibbonGroup title="Modeling">
+                         <div className="flex flex-col space-y-[2px]">
+                             <RibbonButton Icon={ExtrudeIcon} label="Extrude" isActive={activeTool === Tool.EXTRUDE} onClick={() => setActiveTool(Tool.EXTRUDE)} />
+                             <RibbonButton Icon={PresspullIcon} label="Presspull" isActive={activeTool === Tool.PRESS_PULL} onClick={() => setActiveTool(Tool.PRESS_PULL)} />
+                         </div>
+                     </RibbonGroup>
+                     
+                     {/* AI Assistant */}
+                     <RibbonGroup title="AI Tools">
+                        <div className="flex flex-col space-y-1">
+                            <RibbonButton Icon={ZooAiIcon} label="Zoo AI" size="large" isActive={desktopPanel === 'ZOO_AI'} onClick={() => setDesktopPanel(desktopPanel === 'ZOO_AI' ? 'PROPERTIES_LAYERS' : 'ZOO_AI')} />
+                        </div>
+                     </RibbonGroup>
+                </>
+            )}
+            
+            {activeTab === 'View' && (
+                <RibbonGroup title="Navigate">
+                    <RibbonButton Icon={HandIcon} label="Pan" size="large" isActive={activeTool === Tool.PAN} onClick={() => setActiveTool(Tool.PAN)} />
+                    <RibbonButton Icon={ZoomExtentsIcon} label="Zoom Extents" size="large" onClick={() => alert('Zoom Extents')} />
+                </RibbonGroup>
+            )}
+            
+            {activeTab !== 'Home' && activeTab !== 'View' && (
+                <div className="flex items-center justify-center w-full h-full text-gray-500 text-sm italic">
+                    {activeTab} tools are currently under construction.
+                </div>
+            )}
+        </div>
+    </div>
   );
 };
 
