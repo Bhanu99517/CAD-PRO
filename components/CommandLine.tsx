@@ -1,6 +1,4 @@
 
-
-
 import React, { useState } from 'react';
 import { Tool, Point } from '../types';
 

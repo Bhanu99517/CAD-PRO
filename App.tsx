@@ -51,6 +51,10 @@ const App: React.FC = () => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   
   const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: 1920, h: 1080 });
+  
+  // Used to trigger cancellations/completions in Canvas
+  const [cancelTrigger, setCancelTrigger] = useState(0);
+  const [completeTrigger, setCompleteTrigger] = useState(0);
 
   const setShapesAndHistory = (newShapes: Shape[], fromHistory = false) => {
       const currentShapes = history[historyIndex];
@@ -106,7 +110,6 @@ const App: React.FC = () => {
 
   const redo = useCallback(() => {
       if (canRedo) {
-          setHistoryIndex(i => i - 1); // Logic issue in original, fixed here? actually index+1
           setHistoryIndex(i => i + 1);
           setStatusMessage("Redo performed");
       }
@@ -124,15 +127,34 @@ const App: React.FC = () => {
         } else if (isRedo) {
             e.preventDefault();
             redo();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            if (activeTool !== Tool.SELECT) {
+                setCancelTrigger(c => c + 1);
+                setActiveTool(Tool.SELECT);
+                setStatusMessage("Command cancelled");
+            } else {
+                setSelectedShapeIds([]);
+            }
+        } else if (e.key === 'Enter') {
+             e.preventDefault();
+             setCompleteTrigger(c => c + 1);
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+             if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+                if (selectedShapeIds.length > 0) {
+                    deleteShapes(selectedShapeIds);
+                    setStatusMessage("Deleted selected objects");
+                }
+             }
         }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, activeTool, selectedShapeIds]);
 
   const handleSetActiveTool = (tool: Tool) => {
     setActiveTool(tool);
-    setStatusMessage(`Tool: ${tool}`);
+    setStatusMessage(tool === Tool.SELECT ? "Ready" : `${tool} command active`);
   };
 
   const addLayer = useCallback(() => {
@@ -235,14 +257,25 @@ const App: React.FC = () => {
         return;
     }
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    // Simplified bounding box logic handled in utils mostly, but raw calculation here
     shapes.forEach(shape => {
-       // Crude check for zoom extents
-       if (shape.type === Tool.LINE) { minX=Math.min(minX, shape.p1.x, shape.p2.x); maxX=Math.max(maxX, shape.p1.x, shape.p2.x); minY=Math.min(minY, shape.p1.y, shape.p2.y); maxY=Math.max(maxY, shape.p1.y, shape.p2.y); }
-       else if ('x' in shape) { minX=Math.min(minX, (shape as any).x); maxX=Math.max(maxX, (shape as any).x+(shape as any).width); minY=Math.min(minY, (shape as any).y); maxY=Math.max(maxY, (shape as any).y+(shape as any).height); }
-       // ... simplified
+       if ('x' in shape && typeof shape.x === 'number') { minX=Math.min(minX, shape.x); maxX=Math.max(maxX, shape.x+(shape as any).width); minY=Math.min(minY, shape.y); maxY=Math.max(maxY, shape.y+(shape as any).height); }
+       else if ('cx' in shape) { minX=Math.min(minX, (shape as any).cx - (shape as any).r); maxX=Math.max(maxX, (shape as any).cx + (shape as any).r); minY=Math.min(minY, (shape as any).cy - (shape as any).r); maxY=Math.max(maxY, (shape as any).cy + (shape as any).r); }
+       else if ('p1' in shape) { 
+           minX=Math.min(minX, (shape as LineShape).p1.x, (shape as LineShape).p2.x); 
+           maxX=Math.max(maxX, (shape as LineShape).p1.x, (shape as LineShape).p2.x); 
+           minY=Math.min(minY, (shape as LineShape).p1.y, (shape as LineShape).p2.y); 
+           maxY=Math.max(maxY, (shape as LineShape).p1.y, (shape as LineShape).p2.y); 
+       }
+       else if ('points' in shape) {
+            (shape as PolylineShape).points.forEach(p => {
+                minX = Math.min(minX, p.x);
+                maxX = Math.max(maxX, p.x);
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+            });
+       }
     });
-    // Use default if logic fails or complex
+    
     if (!isFinite(minX)) { minX=0; maxX=1920; minY=0; maxY=1080; }
     
     const width = maxX - minX;
@@ -434,13 +467,46 @@ const App: React.FC = () => {
   const activeLayer = layers.find(l => l.id === activeLayerId) || defaultLayer;
   
   const handleCommand = useCallback(async (command: string) => {
-      // AI Implementation omitted for brevity, reusing existing structure would go here
-      // but sticking to requested updates
+      const cmd = command.trim().toUpperCase();
+      
+      // Command Aliases
+      const aliases: Record<string, Tool> = {
+          'L': Tool.LINE, 'LINE': Tool.LINE,
+          'C': Tool.CIRCLE, 'CIRCLE': Tool.CIRCLE,
+          'R': Tool.RECTANGLE, 'REC': Tool.RECTANGLE, 'RECTANGLE': Tool.RECTANGLE,
+          'PL': Tool.POLYLINE, 'POLYLINE': Tool.POLYLINE,
+          'A': Tool.ARC, 'ARC': Tool.ARC,
+          'E': Tool.ERASE, 'ERASE': Tool.ERASE,
+          'M': Tool.MOVE, 'MOVE': Tool.MOVE,
+          'CO': Tool.COPY, 'CP': Tool.COPY, 'COPY': Tool.COPY,
+          'Z': Tool.PAN, // Simplified
+          'T': Tool.TEXT, 'TEXT': Tool.TEXT,
+          'DI': Tool.MEASURE_DISTANCE, 'DIST': Tool.MEASURE_DISTANCE,
+          'PO': Tool.POLYGON, 'POLYGON': Tool.POLYGON,
+          'EL': Tool.ELLIPSE, 'ELLIPSE': Tool.ELLIPSE
+      };
+      
+      if (aliases[cmd]) {
+          handleSetActiveTool(aliases[cmd]);
+          return;
+      }
+      
+      if (cmd === 'ZOOM EXTENTS' || cmd === 'Z E') {
+          zoomExtents();
+          return;
+      }
+      if (cmd === 'GRID ON') { setGridVisible(true); return; }
+      if (cmd === 'GRID OFF') { setGridVisible(false); return; }
+      if (cmd === 'SNAP ON') { setSnapEnabled(true); return; }
+      if (cmd === 'SNAP OFF') { setSnapEnabled(false); return; }
+
+      // Fallback to AI if no standard command
       setIsAiProcessing(true);
-      // ... existing AI logic ...
-      setIsAiProcessing(false);
-      setAiResponseText("AI command handling placeholder");
-  }, []);
+      setTimeout(() => {
+           setIsAiProcessing(false);
+           setAiResponseText("AI Command feature placeholder.");
+      }, 500);
+  }, [zoomExtents]);
 
   const handleSetLimits = useCallback((p1: Point, p2: Point) => {
       const w = Math.abs(p2.x - p1.x);
@@ -494,6 +560,8 @@ const App: React.FC = () => {
             setActiveTool={handleSetActiveTool}
             theme={theme}
             setStatusMessage={setStatusMessage}
+            cancelTrigger={cancelTrigger}
+            completeTrigger={completeTrigger}
           />
         </main>
         
@@ -570,8 +638,10 @@ const App: React.FC = () => {
                       <li><strong>Delete</strong>: Delete Selected</li>
                       <li><strong>Ctrl+Z</strong>: Undo</li>
                       <li><strong>Ctrl+Y</strong>: Redo</li>
+                      <li><strong>Esc</strong>: Cancel Command / Deselect</li>
+                      <li><strong>Enter</strong>: Finish Polyline</li>
                       <li><strong>Scroll</strong>: Zoom</li>
-                      <li><strong>Middle Click/Drag</strong>: Pan</li>
+                      <li><strong>Middle Drag</strong>: Pan</li>
                   </ul>
                   <button onClick={() => setShowHelp(false)} className="mt-6 bg-gray-700 px-4 py-2 rounded">Close</button>
               </div>

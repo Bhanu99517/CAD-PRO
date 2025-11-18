@@ -88,7 +88,7 @@ const QuickAccessButton: React.FC<{ Icon: React.FC<{ className: string }>; onCli
     <button onClick={onClick} title={title} className="p-1 rounded hover:bg-gray-600 text-gray-300 mx-[1px]"><Icon className="w-4 h-4" /></button>
 );
 
-const MenuDropdown: React.FC<{ label: string; items: { label: string; action?: string; shortcut?: string; divider?: boolean }[]; onAction: (a: string) => void }> = ({ label, items, onAction }) => {
+const MenuDropdown: React.FC<{ label: string; items: { label?: string; action?: string; shortcut?: string; divider?: boolean }[]; onAction: (a: string) => void }> = ({ label, items, onAction }) => {
     const [isOpen, setIsOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
