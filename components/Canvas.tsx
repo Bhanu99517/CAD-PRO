@@ -296,7 +296,8 @@ const Canvas: React.FC<CanvasProps> = ({
         // For Polyline, start is the last committed point
         const start = clickPoints[clickPoints.length - 1];
 
-        if (orthoEnabled) {
+        // Only apply ortho for LINE and POLYLINE segments
+        if (orthoEnabled && (activeTool === Tool.LINE || activeTool === Tool.POLYLINE)) {
              const dx = Math.abs(pos.x - start.x);
              const dy = Math.abs(pos.y - start.y);
              if (dx > dy) pos.y = start.y; else pos.x = start.x;
@@ -309,8 +310,10 @@ const Canvas: React.FC<CanvasProps> = ({
         } else if (activeTool === Tool.RECTANGLE) {
             // Rectangle starts from clickPoints[0], not necessarily 'start' if we had multiple points logic
             const rectStart = clickPoints[0]; 
-            updated.x = Math.min(rectStart.x, pos.x);
-            updated.y = Math.min(rectStart.y, pos.y);
+            const minX = Math.min(rectStart.x, pos.x);
+            const minY = Math.min(rectStart.y, pos.y);
+            updated.x = minX;
+            updated.y = minY;
             updated.width = Math.abs(pos.x - rectStart.x);
             updated.height = Math.abs(pos.y - rectStart.y);
         } else if (activeTool === Tool.CIRCLE) {
@@ -394,6 +397,74 @@ const Canvas: React.FC<CanvasProps> = ({
       return null;
   }
 
+  // Dynamic Input Rendering logic (Show dimensions while drawing)
+  const renderDynamicInput = () => {
+      if (clickPoints.length === 0 || !currentShape) return null;
+      
+      const start = clickPoints[clickPoints.length - 1];
+      let text = "";
+      
+      // Use the same ortho logic as handleMouseMove to ensure consistency
+      let pos = { ...coords };
+      if (orthoEnabled && (activeTool === Tool.LINE || activeTool === Tool.POLYLINE)) {
+         const dx = Math.abs(pos.x - start.x);
+         const dy = Math.abs(pos.y - start.y);
+         if (dx > dy) pos.y = start.y; else pos.x = start.x;
+      }
+
+      if (activeTool === Tool.LINE || activeTool === Tool.POLYLINE) {
+          const d = getDistance(start, pos);
+          let angle = Math.atan2(pos.y - start.y, pos.x - start.x) * 180 / Math.PI;
+          if (angle < 0) angle += 360;
+          text = `L: ${d.toFixed(2)}  ∠ ${angle.toFixed(0)}°`;
+      } else if (activeTool === Tool.RECTANGLE) {
+          const w = Math.abs(pos.x - clickPoints[0].x);
+          const h = Math.abs(pos.y - clickPoints[0].y);
+          text = `W: ${w.toFixed(2)}  H: ${h.toFixed(2)}`;
+      } else if (activeTool === Tool.CIRCLE || activeTool === Tool.POLYGON) {
+          const r = getDistance(clickPoints[0], pos);
+          text = `R: ${r.toFixed(2)}`;
+      } else if (activeTool === Tool.ELLIPSE) {
+          const rx = Math.abs(pos.x - clickPoints[0].x);
+          const ry = Math.abs(pos.y - clickPoints[0].y);
+          text = `RX: ${rx.toFixed(2)}  RY: ${ry.toFixed(2)}`;
+      }
+      
+      if (!text) return null;
+      
+      // Scale font size relative to view to keep it readable but not enormous when zoomed
+      const fontSize = Math.max(12, viewBox.w / 60);
+      const padding = fontSize * 0.6;
+      const charWidth = fontSize * 0.6;
+      const width = text.length * charWidth + padding * 2;
+      
+      return (
+          <g transform={`translate(${coords.x + fontSize}, ${coords.y - fontSize})`}>
+              <rect 
+                  x={0} 
+                  y={-fontSize} 
+                  width={width} 
+                  height={fontSize * 1.5} 
+                  fill={theme === 'DARK' ? "#222" : "#fff"} 
+                  stroke={theme === 'DARK' ? "#666" : "#ccc"} 
+                  strokeWidth={viewBox.w/1500} 
+                  rx={4}
+                  fillOpacity={0.9}
+              />
+              <text 
+                  x={padding} 
+                  y={0} 
+                  fill={theme === 'DARK' ? "#eee" : "#333"} 
+                  fontSize={fontSize} 
+                  fontFamily="monospace"
+                  dominantBaseline="auto"
+              >
+                  {text}
+              </text>
+          </g>
+      );
+  };
+
   return (
     <div className={`h-full w-full ${theme === 'DARK' ? 'bg-black' : 'bg-white'} cursor-crosshair`}>
       <svg 
@@ -406,17 +477,17 @@ const Canvas: React.FC<CanvasProps> = ({
         onWheel={handleWheel}
       >
         <defs>
-            {/* Major/Minor Grid System */}
+            {/* Improved Grid System with explicit lines for better visibility */}
             <pattern id="smallGrid" width="10" height="10" patternUnits="userSpaceOnUse">
-                <path d="M 10 0 L 0 0 0 10" fill="none" stroke={theme === 'DARK' ? '#333' : '#e5e5e5'} strokeWidth="0.5"/>
+                <path d="M 10 0 L 0 0 0 10" fill="none" stroke={theme === 'DARK' ? '#333' : '#e5e5e5'} strokeWidth="0.5" vectorEffect="non-scaling-stroke"/>
             </pattern>
             <pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse">
                 <rect width="100" height="100" fill="url(#smallGrid)"/>
-                <path d="M 100 0 L 0 0 0 100" fill="none" stroke={theme === 'DARK' ? '#555' : '#d4d4d4'} strokeWidth="1"/>
+                <path d="M 100 0 L 0 0 0 100" fill="none" stroke={theme === 'DARK' ? '#555' : '#d4d4d4'} strokeWidth="1" vectorEffect="non-scaling-stroke"/>
             </pattern>
         </defs>
         
-        {/* Infinite Grid: Rect that covers visible area plus a buffer to ensure patterns repeat smoothly */}
+        {/* Infinite Grid Layer */}
         {gridVisible && (
             <rect 
                 x={viewBox.x - viewBox.w} 
@@ -432,7 +503,7 @@ const Canvas: React.FC<CanvasProps> = ({
         {shapes.map(renderShape)}
         {currentShape && renderShape(currentShape)}
         
-        {/* UI Layer */}
+        {/* UI / Selection Layer */}
         {selectionRect && (
             <rect 
                 x={Math.min(selectionRect.start.x, selectionRect.end.x)} 
@@ -450,6 +521,9 @@ const Canvas: React.FC<CanvasProps> = ({
         {activeTool === Tool.MEASURE_DISTANCE && clickPoints.map((p, i) => (
             <circle key={i} cx={p.x} cy={p.y} r={3} fill="red" stroke="white" strokeWidth={1} />
         ))}
+        
+        {/* Dynamic Input (Dimensions) */}
+        {renderDynamicInput()}
       </svg>
     </div>
   );
