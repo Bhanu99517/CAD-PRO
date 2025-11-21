@@ -1,5 +1,6 @@
+
 import React, { ChangeEvent, useCallback } from 'react';
-import { Shape, Tool, Layer, RectangleShape, TextShape } from '../types';
+import { Shape, Tool, Layer, RectangleShape, TextShape, EllipseShape, CircleShape, PolylineShape, PolygonShape } from '../types';
 
 interface PropertiesPanelProps {
   selectedShapes: Shape[];
@@ -106,6 +107,21 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShapes, updat
             <PropertyInput label="CY" type="number" value={selectedShape.cy} onChange={(e) => handlePropertyChange('cy', e.target.value)} />
             <PropertyInput label="Radius" type="number" min={0} value={selectedShape.r} onChange={(e) => handlePropertyChange('r', e.target.value)} />
         </>;
+      case Tool.ELLIPSE:
+        const el = selectedShape as EllipseShape;
+        return <>
+            {commonProps}
+            <PropertyInput label="CX" type="number" value={el.cx} onChange={(e) => handlePropertyChange('cx', e.target.value)} />
+            <PropertyInput label="CY" type="number" value={el.cy} onChange={(e) => handlePropertyChange('cy', e.target.value)} />
+            <PropertyInput label="Radius X" type="number" min={0} value={el.rx} onChange={(e) => handlePropertyChange('rx', e.target.value)} />
+            <PropertyInput label="Radius Y" type="number" min={0} value={el.ry} onChange={(e) => handlePropertyChange('ry', e.target.value)} />
+        </>;
+      case Tool.POLYGON:
+         const poly = selectedShape as PolygonShape;
+         return <>
+             {commonProps}
+             <PropertyInput label="Sides" type="number" min={3} value={poly.sides || 0} onChange={(e) => handlePropertyChange('sides', e.target.value)} />
+         </>
       case Tool.ARC:
         return <>
             {commonProps}
@@ -116,9 +132,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShapes, updat
             <PropertyInput label="End Angle" type="number" value={selectedShape.endAngle} onChange={(e) => handlePropertyChange('endAngle', e.target.value)} />
         </>;
       case Tool.POLYLINE:
+      case Tool.FREEHAND:
           return <>
             {commonProps}
-            <p className="text-xs text-gray-500 text-center mt-2">Polyline point editing not yet available.</p>
+            <p className="text-xs text-gray-500 text-center mt-2">Vertex editing via grips on canvas.</p>
           </>
       case Tool.TEXT:
           const textShape = selectedShape as TextShape;
@@ -136,7 +153,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShapes, updat
             <PropertyInput label="Font Size" type="number" min={1} value={textShape.fontSize} onChange={(e) => handlePropertyChange('fontSize', e.target.value)} />
           </>
       default:
-        return null;
+        return <>{commonProps}</>;
     }
   };
 
@@ -157,7 +174,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedShapes, updat
                 ) : (
                     <div className="text-center text-gray-400 pt-8">
                         <p>{selectedShapes.length} objects selected</p>
-                        <p className="text-xs text-gray-500 mt-2">Common properties editing is not yet available.</p>
+                        <p className="text-xs text-gray-500 mt-2">Select single object to edit specific properties.</p>
                     </div>
                 )}
             </div>
