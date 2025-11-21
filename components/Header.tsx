@@ -106,11 +106,14 @@ const MenuDropdown: React.FC<{ label: string; items: { label?: string; action?: 
             {isOpen && (
                 <div className="absolute left-0 top-full mt-0.5 w-48 bg-[#2b2b2b] border border-gray-600 shadow-lg rounded-sm z-50 py-1">
                     {items.map((item, idx) => (
-                        item.divider ? <div key={idx} className="h-[1px] bg-gray-600 my-1" /> :
-                        <button key={idx} onClick={() => { onAction(item.action || ''); setIsOpen(false); }} className="w-full text-left px-4 py-1.5 text-xs text-gray-300 hover:bg-blue-600 hover:text-white flex justify-between">
-                            <span>{item.label}</span>
-                            {item.shortcut && <span className="text-gray-500 ml-4">{item.shortcut}</span>}
-                        </button>
+                        item.divider ? (
+                            <div key={idx} className="h-[1px] bg-gray-600 my-1" />
+                        ) : (
+                            <button key={idx} onClick={() => { onAction(item.action || ''); setIsOpen(false); }} className="w-full text-left px-4 py-1.5 text-xs text-gray-300 hover:bg-blue-600 hover:text-white flex justify-between">
+                                <span>{item.label}</span>
+                                {item.shortcut && <span className="text-gray-500 ml-4">{item.shortcut}</span>}
+                            </button>
+                        )
                     ))}
                 </div>
             )}
